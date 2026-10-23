@@ -24,7 +24,8 @@ function maxDistAt(startedAt, now) {
    newly owns, so these have to agree with the page. */
 const SKIN_COST = {
   dot: 0, ring: 40, arrow: 90, cross: 160, blade: 260, glow: 400,
-  comet: 560, prism: 760, halo: 1000, spectrum: 1300, bullion: 1700
+  comet: 560, prism: 760, halo: 1000, spectrum: 1300, bullion: 1700,
+  kamish: 2000
 };
 const TAIL_COST = {
   none: 0, wisp: 0, flare: 8, bubble: 12, rainbow: 18, snowflake: 22,
