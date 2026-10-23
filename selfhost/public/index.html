@@ -199,6 +199,35 @@
   #fx { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
   body.focus #fx { display: none; }
 
+  /* lobby music toggle, out of the way in the top corner */
+  #musicBtn {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    right: max(14px, env(safe-area-inset-right, 0px));
+    z-index: 72;
+    width: 38px; height: 38px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--field) 88%, transparent);
+    box-shadow: inset 0 0 0 1px var(--wall-line);
+    color: var(--aqua);
+  }
+  #musicBtn:hover { box-shadow: inset 0 0 0 1px var(--aqua); }
+  #musicBtn svg { width: 19px; height: 19px; display: block; }
+  #musicBtn .slash { opacity: 0; }
+  #musicBtn.off { color: var(--faint); }
+  #musicBtn.off .slash { opacity: 1; }
+  body.focus #musicBtn { display: none; }
+  .sr {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   /* the pilot page: wallet, pilot and gear only, no playfield */
   body.settings .veil,
   body.settings .stagewrap,
@@ -691,6 +720,17 @@
 </div>
 
 <div class="veil" id="veil"></div>
+
+<button id="musicBtn" aria-pressed="true" title="Lobby music">
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M10 18V7l9-2v11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="7.5" cy="18" r="2.6" fill="currentColor"/>
+    <circle cx="16.5" cy="16" r="2.6" fill="currentColor"/>
+    <line class="slash" x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+  <span class="sr">Lobby music</span>
+</button>
+
 <canvas id="fx"></canvas>
 
 <script>
@@ -1954,7 +1994,7 @@
   function withinWarmup() { return msToStart() <= 4000; }
 
   /* ---------- loop ---------- */
-  let lastRail = 0, lastBusy = false;
+  let lastRail = 0, lastBusy = false, lastFocus = false;
   // Logic is clock-driven and idempotent, so it can run from the animation frame
   // and from a timer — the timer keeps the lobby clock, the round result and bet
   // settlement moving even when a background tab stops painting.
@@ -2021,6 +2061,8 @@
 
     const busyNow = S.phase === "open" || S.phase === "racing";
     if (busyNow !== lastBusy) { lastBusy = busyNow; pushLobbyPresence(); }
+    const focusNow = document.body.classList.contains("focus");
+    if (focusNow !== lastFocus) { lastFocus = focusNow; syncMusic(); }
     if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
     if (now - lastRail > 140) { lastRail = now; paintRail(); drawPreviews(now); tickVeil(); }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
@@ -2033,6 +2075,41 @@
     requestAnimationFrame(frame);
   }
   setInterval(() => step(performance.now()), 250);
+
+  /* ---------- lobby music ----------
+     Browsers refuse to start audio before the viewer has interacted, so the
+     first click or key press is what actually begins playback. It pauses while
+     you are racing and picks up again back in the lobby. */
+  let music = null, musicOn = true;
+  function ensureMusic() {
+    if (music) return music;
+    music = new Audio("lobby-music.mp3");
+    music.loop = true;
+    music.volume = 0.32;
+    music.preload = "auto";
+    return music;
+  }
+  function syncMusic() {
+    const wanted = musicOn && !document.body.classList.contains("focus");
+    if (!wanted) { if (music && !music.paused) music.pause(); return; }
+    const m = ensureMusic();
+    if (m.paused) m.play().catch(() => {});   // still waiting for a gesture
+  }
+  function paintMusic() {
+    const b = $("musicBtn");
+    b.classList.toggle("off", !musicOn);
+    b.setAttribute("aria-pressed", String(musicOn));
+    b.title = musicOn ? "Lobby music on" : "Lobby music off";
+  }
+  function setMusic(on) {
+    musicOn = on;
+    try { localStorage.setItem("cr.music", on ? "on" : "off"); } catch (e) {}
+    paintMusic();
+    syncMusic();
+  }
+  $("musicBtn").addEventListener("click", () => setMusic(!musicOn));
+  ["pointerdown", "keydown"].forEach(ev =>
+    window.addEventListener(ev, syncMusic, { once: false, passive: true }));
 
   /* ---------- pointer tail across the interface ---------- */
   const fx = $("fx"), fxc = fx.getContext("2d");
@@ -2400,6 +2477,7 @@
       S.name = localStorage.getItem("cr.name") || "";
       const c = localStorage.getItem("cr.color");
       if (c && COLORS.includes(c)) S.color = c;
+      musicOn = localStorage.getItem("cr.music") !== "off";
     } catch (e) {}
   }
   function saveLocal() {
@@ -2608,6 +2686,7 @@
     nameInput.value = S.name;
     paintSwatches();
     paintSkins();
+    paintMusic();
     updateAppCursor();
     fxSize();
     fit();
