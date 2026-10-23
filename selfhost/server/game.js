@@ -25,7 +25,7 @@ function maxDistAt(startedAt, now) {
 const SKIN_COST = {
   dot: 0, ring: 40, arrow: 90, cross: 160, blade: 260, glow: 400,
   comet: 560, prism: 760, halo: 1000, spectrum: 1300, bullion: 1700,
-  kamish: 2000
+  kamish: 2000, azure: 2400, mcsword: 2800
 };
 const TAIL_COST = {
   none: 0, wisp: 0, flare: 8, bubble: 12, rainbow: 18, snowflake: 22,
