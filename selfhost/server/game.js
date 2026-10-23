@@ -20,8 +20,19 @@ function maxDistAt(startedAt, now) {
   return distAt((now - startedAt) / 1000) * 1.02 + 60;
 }
 
+/* Prices, mirroring the game file. The server charges for anything a player
+   newly owns, so these have to agree with the page. */
+const SKIN_COST = {
+  dot: 0, ring: 40, arrow: 90, cross: 160, blade: 260, glow: 400,
+  comet: 560, prism: 760, halo: 1000, spectrum: 1300, bullion: 1700
+};
+const TAIL_COST = {
+  none: 0, wisp: 0, flare: 8, bubble: 12, rainbow: 18, snowflake: 22,
+  gold: 35, fairydust: 45, sparks: 60, canvas: 70, smoke: 90
+};
+
 module.exports = {
-  W, H, distAt, maxDistAt,
+  W, H, distAt, maxDistAt, SKIN_COST, TAIL_COST,
   JOIN_WINDOW: Number(process.env.JOIN_WINDOW || 30000),
   ENTRY_FEE: Number(process.env.ENTRY_FEE || 10),
   START_COINS: Number(process.env.START_COINS || 100),

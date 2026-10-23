@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Cursor Race</title>
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}#account{position:fixed;left:max(14px,env(safe-area-inset-left,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;border-radius:999px;background:#0c1324;box-shadow:inset 0 0 0 1px #27375a;font:12px "Azeret Mono",ui-monospace,monospace;color:#8b99bb}body.focus #account,body.settings #account{display:none}#account.inline{position:static;margin:2px auto 0}#account img{width:22px;height:22px;border-radius:50%;display:block}#account .dot{width:9px;height:9px;border-radius:50%;background:#4d5c80;margin-left:4px}#account .nm{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef2fb}#account .nm.guest{color:#8b99bb}#account .act{color:#3fe0cf;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:10px;padding:4px 9px;border-radius:999px;box-shadow:inset 0 0 0 1px #27375a}#account .act:hover{background:rgba(63,224,207,.12)}#account .act.primary{color:#070b16;background:#ffb12e;box-shadow:none;font-weight:600}#account .act.primary:hover{background:#ffc15c}#signin-failed{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;font:12px "Azeret Mono",ui-monospace,monospace}</style>
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}#account{position:fixed;left:max(14px,env(safe-area-inset-left,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;border-radius:999px;background:#0c1324;box-shadow:inset 0 0 0 1px #27375a;font:12px "Azeret Mono",ui-monospace,monospace;color:#8b99bb}body.focus #account,body.settings #account{display:none}#account.inline{position:static;margin:2px auto 0}#account img{width:22px;height:22px;border-radius:50%;display:block}#account .dot{width:9px;height:9px;border-radius:50%;background:#4d5c80;margin-left:4px}#account .nm{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef2fb}#account .nm.guest{color:#8b99bb}#account .act{color:#3fe0cf;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:10px;padding:4px 9px;border-radius:999px;box-shadow:inset 0 0 0 1px #27375a}#account .act:hover{background:rgba(63,224,207,.12)}#account .act.primary{display:inline-flex;align-items:center;gap:10px;color:#1f2430;background:#fff;box-shadow:none;font-weight:600;font-size:14px;letter-spacing:.01em;text-transform:none;padding:12px 18px;border-radius:7px;line-height:1}#account .act.primary:hover{background:#eef1f6}#account .gicon{width:20px;height:20px;display:block}@media (max-width:560px){#account{gap:7px;padding:5px 7px 5px 5px;max-width:calc(100vw - 24px)}#account.inline{width:100%;justify-content:center}#account .nm.guest{display:none}#account:has(.act.primary){background:none;box-shadow:none;padding:0}#account .act.primary{font-size:13px;padding:11px 14px;gap:8px}}#signin-failed{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;font:12px "Azeret Mono",ui-monospace,monospace}</style>
 </head>
 <body>
 <script src="claude-shim.js"></script>
@@ -294,6 +294,7 @@
   #zoom { position: fixed; inset: 0; z-index: 21; pointer-events: none; }
   body:not(.lobby) #zoom { display: none; }
 
+  body.settings #ladderHud, body.focus #ladderHud { display: none; }
   #ladderHud {
     position: fixed;
     top: max(14px, env(safe-area-inset-top, 0px));
@@ -776,6 +777,35 @@
     .stagewrap { min-height: 60vh; }
     .stage { height: auto; width: 100%; max-width: min(100%, 60vh); }
     .veil h1 { font-size: clamp(36px, 8vh, 60px); }
+    body.lobby .app, body.focus .app { height: 100%; min-height: 0; }
+    body.lobby .stagewrap, body.focus .stagewrap { min-height: 0; }
+    body.lobby .stage, body.focus .stage { height: 100%; max-width: none; }
+  }
+
+  /* phones: fewer columns, smaller type, and nothing crowding the corners */
+  @media (max-width: 560px) {
+    .veil { padding: 16px max(12px, env(safe-area-inset-right, 0px)) 16px max(12px, env(safe-area-inset-left, 0px)); }
+    .wrap { gap: 12px; }
+    .tables { grid-template-columns: repeat(2, 1fr); gap: 8px; width: 100%; }
+    .tcard { padding: 10px 6px 9px; }
+    .tcard .tname { font-size: 16px; }
+    .tcard .tnum { font-size: 23px; }
+    .rules { font-size: 11px; gap: 5px; }
+    .veil p { font-size: 13px; }
+    .stat { gap: 12px; font-size: 10px; letter-spacing: .08em; }
+    .btnrow { gap: 8px; }
+    .go { font-size: 17px; padding: 10px 14px; }
+    .entrants { gap: 6px; }
+    #ladderHud { width: min(150px, 42vw); padding: 7px 8px 8px; right: calc(max(10px, env(safe-area-inset-right, 0px)) + 46px); }
+    #ladderHud .lrow { font-size: 10px; gap: 6px; }
+    #ladderHud .lrow b { font-size: 10px; }
+    #accountSlot { width: 100%; }
+    .lamp { width: clamp(26px, 9vw, 40px); }
+    .lights { gap: 10px; }
+    body.settings .skins { grid-template-columns: repeat(3, 1fr); }
+    .purse b { font-size: 22px; }
+    .live { font-size: 10px; }
+    .readout .big { font-size: clamp(28px, 9vw, 44px); }
   }
 </style>
 
@@ -925,11 +955,13 @@
     pillarCache.clear();
     return { seed: key, ph, per, gates };
   }
-  const press = u => Math.min(1, Math.max(0, u) / 9000);
+  /* how far along the narrowing has got: the full squeeze is only reached
+     after 18 km, so the opening kilometres stay generous */
+  const press = u => Math.min(1, Math.max(0, u) / 18000);
   /* the channel breathes — tight stretches and wide ones alternate on two
      scales, so the width keeps changing instead of only narrowing with age */
   const squeeze = u => 0.95 + 0.18 * Math.sin(u / 520) * Math.cos(u / 1270) - 0.08 * Math.sin(u / 240);
-  const baseHalf = u => (150 - 104 * press(u)) * squeeze(u);
+  const baseHalf = u => (150 - 58 * press(u)) * squeeze(u);
 
   /* every 1000 m the channel opens into a wide plaza — easier walls, but it is
      filled with pillars, so the breather costs attention instead of nerve */
@@ -1384,6 +1416,8 @@
     best: 0,
     newRecord: false,
     board: [],
+    serverLedger: false,
+    cancelled: false,
     name: "",
     color: COLORS[0],
     skin: "dot",
@@ -1605,7 +1639,17 @@
   function applyRound(d) {
     const rid = d && typeof d.rid === "string" ? d.rid : "";
     if (!rid) {
-      if (S.round) { S.round = null; backToIdle(); }
+      if (S.round) {
+        const called = !!(d && d.cancelled);
+        const wasIn = S.joined;
+        S.round = null;
+        backToIdle();
+        if (called) {
+          if (wasIn && !S.serverLedger) { S.coins += ENTRY_FEE; saveProfile(); }
+          else if (wasIn) refreshBalance();
+          say("race called off - nobody else took a seat");
+        }
+      }
       return;
     }
     if (S.round && S.round.rid === rid) return;
@@ -1672,10 +1716,11 @@
     if (S.phase !== "open" || S.joined) return;
     if (Date.now() > S.round.startsAt - 300) { say("the gate has closed"); return; }
     if (S.coins < ENTRY_FEE) { say("not enough coins for the " + ENTRY_FEE + " entry"); return; }
-    S.coins -= ENTRY_FEE;
     S.joined = true;
     S.bet = null;
-    saveProfile(); pushPresence(true); paintVeil(); paintRail();
+    if (S.serverLedger) { pushPresence(true); setTimeout(refreshBalance, 900); }
+    else { S.coins -= ENTRY_FEE; saveProfile(); pushPresence(true); }
+    paintVeil(); paintRail();
   }
 
   function practiceRun() {
@@ -1750,9 +1795,10 @@
     const target = roundField().find(p => p.peer === peerId);
     if (!target || (!target.racing && !target.pending)) { say("that pilot is already out"); return; }
     if (S.uid && target.uid === S.uid) { say("you cannot back yourself"); return; }
-    S.coins -= amt;
     S.bet = { on: peerId, amt };
-    saveProfile(); pushPresence(true); paintRail(); paintVeil();
+    if (S.serverLedger) { pushPresence(true); setTimeout(refreshBalance, 900); }
+    else { S.coins -= amt; saveProfile(); pushPresence(true); }
+    paintRail(); paintVeil();
   }
 
   /* ---------- round resolution ---------- */
@@ -1775,7 +1821,7 @@
     if (!S.practice && S.joined && winner && winner.isMe) { gain = pot; S.wins += 1; }
     const backed = S.bet ? field.find(p => p.peer === S.bet.on) : null;
     if (!S.practice && backed && winner && backed.uid === winner.uid) betWon = S.bet.amt * n;
-    S.coins += gain + betWon;
+    if (!S.serverLedger) S.coins += gain + betWon;
     S.settled = true;
     S.phase = "over";
     // the winner is whoever is still flying, so they are ahead even if their
@@ -1792,6 +1838,7 @@
       best: winner ? winner.dist : 0
     };
     if (S.joined) recordRun(Math.round((S.death ? S.death.dist : S.dist) / 10));
+    if (S.serverLedger) setTimeout(refreshBalance, 1100);
     exitFocus();
     document.body.classList.remove("hideveil");
     saveProfile();
@@ -1844,7 +1891,7 @@
     const gained = cleared - S.gatesPassed;
     S.gatesPassed = cleared;
     S.runCoins += gained;
-    if (!S.practice) S.coins += gained;        // practice pays nothing
+    if (!S.practice && !S.serverLedger) S.coins += gained;   // practice pays nothing
     $("coinNow").textContent = String(S.runCoins);
     $("coinWord").textContent = S.runCoins === 1 ? "coin" : "coins";
     pingUntil = performance.now() + 160;
@@ -1884,8 +1931,7 @@
     $("gemNow").textContent = String(S.runGems);
     $("gemLine").hidden = false;
     if (S.practice) return;                    // practice pays nothing
-    S.gems += 1;
-    saveProfile();
+    if (!S.serverLedger) { S.gems += 1; saveProfile(); }
   }
 
   /* ---------- profile ---------- */
@@ -1899,8 +1945,23 @@
     if (S.profileRef) S.profileRef.set(body).catch(() => {});
     paintRail();
   }
+  /* Where a server keeps the ledger it is the only one allowed to move money,
+     so the client shows what it is told rather than guessing alongside it. */
+  async function refreshBalance() {
+    if (!S.profileRef) return;
+    try {
+      const snap = await S.profileRef.get();
+      if (!snap.exists) return;
+      const p = snap.data();
+      if (typeof p.coins === "number") S.coins = Math.max(0, Math.floor(p.coins));
+      if (typeof p.gems === "number") S.gems = Math.max(0, Math.floor(p.gems));
+      paintRail(); paintSkins(); paintVeil();
+    } catch (e) {}
+  }
+
   function applyProfile(p, remote) {
     if (!p || typeof p !== "object") return;
+    if (remote && p.ledger === true) S.serverLedger = true;
     // coins are money now, so the stored balance wins rather than the larger of the two
     if (typeof p.coins === "number") S.coins = Math.max(0, Math.floor(p.coins));
     if (typeof p.gems === "number") S.gems = Math.max(0, Math.floor(p.gems));
@@ -2019,6 +2080,8 @@
       joined: S.practice ? false : S.joined,
       bet: S.bet ? { on: S.bet.on, amt: S.bet.amt } : null,
       wins: S.wins,
+      rc: S.runCoins,
+      rg: S.runGems,
       dist: Math.round(S.death ? S.death.dist : S.dist),
       cursor: { x: +(S.cx / W).toFixed(3), y: +(S.cy / H).toFixed(3) }
     };
@@ -2034,7 +2097,7 @@
     ctx.setTransform(scale, 0, 0, scale, offX, offY);
     ctx.save();
 
-    const demo = demoMode();
+    const demo = demoBg();
     const wd = S.world, dist = demo ? demoDistAt(now) : S.dist;
     // everything the canvas can show, in logical units — wider than the
     // playfield on a wide screen, taller on a narrow one
@@ -2293,7 +2356,7 @@
     lastStepAt = now;
     // the pilot page needs the rail, so it is not "lobby" even when idle
     document.body.classList.toggle("lobby",
-      demoMode() && !document.body.classList.contains("settings"));
+      demoBg() && !document.body.classList.contains("settings"));
 
     const busyNow = S.phase === "open" || S.phase === "racing";
     if (busyNow !== lastBusy) { lastBusy = busyNow; pushLobbyPresence(); }
@@ -2312,7 +2375,7 @@
     draw(now);
     if (document.body.classList.contains("focus")) clearFx();
     else drawFx(now);
-    if (demoMode()) drawZoom(now); else clearZoom();
+    if (demoBg()) drawZoom(now); else clearZoom();
     requestAnimationFrame(frame);
   }
   setInterval(() => step(performance.now()), 250);
@@ -2323,6 +2386,9 @@
      still frame. Nobody here is real and nothing is at stake. */
   const DEMO = [];
   const demoMode = () => !S.table && !S.practice && S.phase === "idle";
+  /* the same living backdrop carries on behind the result card, so the end of a
+     run looks like the home screen rather than a frozen frame in dark margins */
+  const demoBg = () => demoMode() || S.phase === "over";
   const demoDistAt = now => 400 + ((now / 1000) * 130) % 7000;
   function demoInit() {
     if (DEMO.length) return;
@@ -2416,7 +2482,7 @@
 
   function paintLadderHud() {
     const hud = $("ladderHud");
-    const show = demoMode();
+    const show = demoBg();
     if (hud.hidden === show) hud.hidden = !show;
     if (!show) return;
     const rows = S.board.slice(0, 5);
@@ -2448,7 +2514,7 @@
     try { localStorage.setItem("cr.vol", String(Math.round(musicVol * 100))); } catch (e) {}
   }
   function syncMusic() {
-    const wanted = musicOn && !document.body.classList.contains("focus");
+    const wanted = musicOn;          // keeps playing through a race unless muted
     if (!wanted) { if (music && !music.paused) music.pause(); return; }
     const m = ensureMusic();
     if (m.paused) m.play().catch(() => {});   // still waiting for a gesture
@@ -2579,7 +2645,9 @@
           return;
         }
         veil.innerHTML = wrapHTML(lightsHTML(secs) +
-          '<p>' + (S.joined ? "Put your cursor in the channel." : "Watching this one.") + '</p>');
+          '<p>' + (S.joined
+            ? (TOUCH ? "Drag anywhere on the screen to steer." : "Put your cursor in the channel.")
+            : "Watching this one.") + '</p>');
         return;
       }
       const pot = roundField().length * ENTRY_FEE;
@@ -2685,7 +2753,8 @@
         '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
       '</div>' +
       '<p id="veilNote">' + (S.db
-        ? "Everyone on this link shares one race clock. Open a race and the others have 30 seconds to take a seat."
+        ? "Everyone on this link shares one race clock. Open a race and the others have " + S.gateSecs +
+          " seconds to take a seat - if nobody does, the race is called off and your entry comes back."
         : "Sign-in data is not available here, so this view runs practice runs only.") + '</p>' +
       noteLine());
   }
@@ -2971,11 +3040,15 @@
     if (owns(item, kind)) return;
     const purse = kind === "skins" ? S.coins : S.gems;
     if (purse < item.cost) { say("not enough " + (kind === "skins" ? "coins" : "gems")); return; }
-    if (kind === "skins") { S.coins -= item.cost; S.skin = item.id; }
-    else { S.gems -= item.cost; S.tail = item.id; }
+    if (kind === "skins") S.skin = item.id; else S.tail = item.id;
+    if (!S.serverLedger) {
+      if (kind === "skins") S.coins -= item.cost; else S.gems -= item.cost;
+    }
     S.owned[kind].add(item.id);
     S.buying = null;
-    saveProfile(); paintSkins(); paintRail(); updateAppCursor(); pushPresence(true);
+    saveProfile();
+    if (S.serverLedger) setTimeout(refreshBalance, 700);
+    paintSkins(); paintRail(); updateAppCursor(); pushPresence(true);
   }
   const SAMPLE = [];
   for (let i = 0; i <= 9; i++) {

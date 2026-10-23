@@ -25,7 +25,9 @@
     } else if (s.googleEnabled) {
       el.innerHTML =
         '<span class="nm guest">Playing as a guest</span>' +
-        '<a class="act primary" href="/auth/google">Sign in with Google</a>';
+        '<a class="act primary" href="/auth/google">' +
+          '<img class="gicon" src="google.png" alt="" width="20" height="20">' +
+          'Sign in with Google</a>';
     } else {
       el.remove();
       return;

@@ -53,38 +53,48 @@ function cookieOf(req, name) {
 
 const store = new Store(DATA);
 
-/* ---------- the coin ledger ----------
-   Coins are both earned (gates, a client-side count) and staked (entry fees,
-   pots, bets). Rather than fight the client for one number, the server keeps
-   only its own ADJUSTMENT: the net of every entry, pot and bet it has applied.
-
-       shown balance = coins the client reports earning + the server's adjustment
-
-   A read adds the adjustment on, a write takes it back off, so the two never
-   double-count each other. The zero-sum flows are therefore the server's alone,
-   while earning stays where it can actually be observed. */
-function adjOf(uid) {
+/* ---------- the purse ----------
+   The server holds the only copy. Clients report what they earned on a run and
+   what they now own; every figure they are shown comes back from here. An
+   earlier design had the page and the server each applying the same entry fee,
+   which charged it twice. */
+function purse(uid) {
   const w = store.get("wallets/" + uid);
-  if (w && typeof w.coinAdj === "number") return w.coinAdj;
-  store.set("wallets/" + uid, { coinAdj: G.START_COINS, created: Date.now() });
-  return G.START_COINS;
-}
-/* May be negative: the starting coins arrive as an adjustment, so a player who
-   spends them has earned less than nothing yet. Only the shown balance floors. */
-function earnedOf(uid) {
-  const p = store.get("data/users/" + uid + "/profile");
-  return p && typeof p.coins === "number" ? Math.floor(p.coins) : 0;
-}
-function balance(uid) { return Math.max(0, Math.round(earnedOf(uid) + adjOf(uid))); }
-
-function move(uid, delta, why) {
-  const next = adjOf(uid) + delta;
-  store.set("wallets/" + uid, { coinAdj: next, updated: Date.now() });
-  if (delta) {
-    console.log("  ledger %s %s%d -> %d coins (%s)",
-      uid.slice(0, 10), delta > 0 ? "+" : "", delta, balance(uid), why);
+  if (w && typeof w.coins === "number") {
+    return { coins: w.coins, gems: typeof w.gems === "number" ? w.gems : 0 };
   }
-  return balance(uid);
+  const fresh = { coins: G.START_COINS, gems: 0, created: Date.now() };
+  store.set("wallets/" + uid, fresh);
+  return { coins: fresh.coins, gems: fresh.gems };
+}
+const balance = uid => purse(uid).coins;
+
+function move(uid, delta, why, what) {
+  const p = purse(uid);
+  const key = what === "gems" ? "gems" : "coins";
+  p[key] = Math.max(0, Math.round(p[key] + delta));
+  store.set("wallets/" + uid, { coins: p.coins, gems: p.gems, updated: Date.now() });
+  if (delta) {
+    console.log("  purse %s %s%d %s -> %d (%s)",
+      uid.slice(0, 10), delta > 0 ? "+" : "", delta, key, p[key], why);
+  }
+  return p[key];
+}
+
+/* What a player now owns that they did not before, and what it costs. */
+function chargeForNewGear(uid, wanted, held) {
+  const list = (o, k) => (o && Array.isArray(o[k]) ? o[k] : []);
+  let coins = 0, gems = 0;
+  const addedSkins = list(wanted, "skins").filter(id => !list(held, "skins").includes(id));
+  const addedTails = list(wanted, "tails").filter(id => !list(held, "tails").includes(id));
+  for (const id of addedSkins) coins += G.SKIN_COST[id] || 0;
+  for (const id of addedTails) gems += G.TAIL_COST[id] || 0;
+  if (!coins && !gems) return true;
+  const p = purse(uid);
+  if (p.coins < coins || p.gems < gems) return false;
+  if (coins) move(uid, -coins, "bought " + addedSkins.join(","), "coins");
+  if (gems) move(uid, -gems, "bought " + addedTails.join(","), "gems");
+  return true;
 }
 
 /* ---------- the room ---------- */
@@ -180,7 +190,9 @@ function readFor(uid, p) {
   const m = /^data\/users\/([^/]+)\/profile$/.exec(p);
   if (m) {
     if (m[1] !== uid) return null;                       // another player's drawer
-    return Object.assign({}, body || {}, { coins: balance(uid) });
+    // `ledger` tells the page that money moves here, not in the browser
+    const w = purse(uid);
+    return Object.assign({}, body || {}, { coins: w.coins, gems: w.gems, ledger: true });
   }
   if (p.startsWith("wallets/") || p.startsWith("identities/")) return null;
   const u = /^users\/([^/]+)$/.exec(p);
@@ -230,16 +242,17 @@ function writeFor(uid, p, data, mode) {
   if (m) {
     if (m[1] !== uid) return "not_permitted";
     const clean = Object.assign({}, data);
-    // the client sends the balance it was shown, which already includes the
-    // server's adjustment: take it back off so the next read does not add twice
-    if (typeof clean.coins === "number") {
-      clean.coins = Math.round(clean.coins - adjOf(uid));
-    }
-    if (typeof clean.gems === "number") clean.gems = Math.max(0, Math.floor(clean.gems));
-    // only a signed-in account may acquire items; a guest keeps whatever is stored
-    if (clean.owned && !store.get("users/" + uid)) {
-      const held = (store.get(p) || {}).owned;
-      if (held) clean.owned = held; else delete clean.owned;
+    // money is the server's alone: the page may report what it earned on a run
+    // and what it wants to own, never a balance
+    delete clean.ledger;
+    delete clean.coins;
+    delete clean.gems;
+    const stored = store.get(p) || {};
+    if (clean.owned) {
+      // only a signed-in account may acquire, and only if it can pay
+      if (!store.get("users/" + uid) || !chargeForNewGear(uid, clean.owned, stored.owned)) {
+        if (stored.owned) clean.owned = stored.owned; else delete clean.owned;
+      }
     }
     if (mode === "update") store.update(p, clean); else store.set(p, clean);
     return null;
@@ -287,6 +300,8 @@ function ledger(uid, pres, peerId, table) {
     e.state = String(pres.state || "out");
     const claimed = Number(pres.dist) || 0;
     e.dist = Math.max(e.dist, Math.min(claimed, G.maxDistAt(r.startsAt, Date.now())));
+    e.rc = Math.max(e.rc || 0, Number(pres.rc) || 0);   // gates cleared, as reported
+    e.rg = Math.max(e.rg || 0, Number(pres.rg) || 0);   // gems taken
     return;
   }
 
@@ -313,6 +328,15 @@ function settle(r) {
   const winner = racing.length === 1 ? racing[0] : list.slice().sort((a, b) => b.dist - a.dist)[0];
   const pot = list.length * G.ENTRY_FEE;
 
+  for (const e of list) {
+    const span = G.maxDistAt(r.startsAt, Date.now());
+    const coinCap = Math.max(0, Math.floor((span + G.H) / 520) + 1);
+    const gemCap = Math.ceil(span / 700) + 2;
+    const rc = Math.min(Math.max(0, Math.round(e.rc || 0)), coinCap);
+    const rg = Math.min(Math.max(0, Math.round(e.rg || 0)), gemCap);
+    if (rc) move(e.uid, rc, "gates " + r.rid, "coins");
+    if (rg) move(e.uid, rg, "gems " + r.rid, "gems");
+  }
   if (winner) move(winner.uid, pot, "pot " + r.rid);
   for (const [uid, b] of r.bets) {
     if (winner && b.onUid === winner.uid) move(uid, b.amt * list.length, "bet won " + r.rid);
@@ -343,6 +367,25 @@ setInterval(() => {
   const now = Date.now();
   for (const r of [...rounds.values()]) {
     if (r.settled || now < r.startsAt) continue;
+
+    /* A race needs someone to race: if nobody else confirmed by the time the
+       gate shuts, call it off and hand the money back. Nothing else about the
+       round is decided until this has been asked, or a lone pilot who clipped a
+       wall on the first frame would be settled as the winner of their own pot. */
+    if (!r.checked) {
+      if (now < r.startsAt + 700) continue;      // seats are still accepted to +500
+      r.checked = true;
+      if (r.entrants.size < 2) {
+        for (const [uid, e] of r.entrants) if (e.paid) move(uid, G.ENTRY_FEE, "refund " + r.rid);
+        for (const [uid, b] of r.bets) if (b.paid) move(uid, b.amt, "refund bet " + r.rid);
+        r.settled = true;
+        rounds.delete(r.table);
+        store.set("live/" + r.table, { rid: "", cancelled: true, serverNow: now, host: "" });
+        console.log("%s: race %s called off, nobody else took a seat", r.table, r.rid);
+        continue;
+      }
+    }
+
     const list = [...r.entrants.values()];
     if (!list.length) {
       if (now > r.startsAt + 5000) clearRound(r, now);

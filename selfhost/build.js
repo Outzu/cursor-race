@@ -28,8 +28,18 @@ const ACCOUNT_CSS =
   '#account .act{color:#3fe0cf;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:10px;' +
   'padding:4px 9px;border-radius:999px;box-shadow:inset 0 0 0 1px #27375a}' +
   '#account .act:hover{background:rgba(63,224,207,.12)}' +
-  '#account .act.primary{color:#070b16;background:#ffb12e;box-shadow:none;font-weight:600}' +
-  '#account .act.primary:hover{background:#ffc15c}' +
+  '#account .act.primary{display:inline-flex;align-items:center;gap:10px;color:#1f2430;' +
+  'background:#fff;box-shadow:none;font-weight:600;font-size:14px;letter-spacing:.01em;' +
+  'text-transform:none;padding:12px 18px;border-radius:7px;line-height:1}' +
+  '#account .act.primary:hover{background:#eef1f6}' +
+  '#account .gicon{width:20px;height:20px;display:block}' +
+  /* a phone has no room for the chip's caption beside a full-size button */
+  '@media (max-width:560px){#account{gap:7px;padding:5px 7px 5px 5px;max-width:calc(100vw - 24px)}' +
+  '#account.inline{width:100%;justify-content:center}' +
+  '#account .nm.guest{display:none}' +
+  /* with the caption gone the pill is just a frame round the button */
+  '#account:has(.act.primary){background:none;box-shadow:none;padding:0}' +
+  '#account .act.primary{font-size:13px;padding:11px 14px;gap:8px}}' +
   '#signin-failed{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;' +
   'background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;' +
   'font:12px "Azeret Mono",ui-monospace,monospace}';
