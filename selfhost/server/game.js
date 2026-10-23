@@ -24,7 +24,7 @@ module.exports = {
   W, H, distAt, maxDistAt,
   JOIN_WINDOW: Number(process.env.JOIN_WINDOW || 30000),
   ENTRY_FEE: Number(process.env.ENTRY_FEE || 10),
-  START_CREDITS: Number(process.env.START_CREDITS || 100),
+  START_COINS: Number(process.env.START_COINS || 100),
   RESULT_HOLD: Number(process.env.RESULT_HOLD || 9000),
   TABLE_CAP: Number(process.env.TABLE_CAP || 10),
   STAKES: [5, 10, 25]

@@ -37,6 +37,20 @@ server/store.js          JSON document store (swap this for a real database)
 server/game.js           rules the server and client must agree on
 ```
 
+## Two currencies
+
+**Coins** are earned one per gate cleared. They pay the 10-coin race entry, form the winner's
+pot, are what watchers stake on a bet, and buy cursor designs.
+
+**Gems** are picked up on the channel. They appear in the corridor — some scrolling in from
+the top, some blinking into existence already in view — and the first cursor to touch one
+takes it. They buy tails, and nothing else.
+
+Gems are seeded from the round id like the rest of the course, so every pilot sees the same
+gems in the same places; what differs is who gets there first. A claim is broadcast on the
+table's room and the relay delivers it in one order to everyone, so the first claim back is
+the winner on every screen without anyone arbitrating.
+
 ## Tables
 
 The site is split into six tables, each capped at ten pilots, each running its own race on
@@ -72,17 +86,21 @@ The split matters, so it is worth being exact.
 - **The race clock.** A client asks to open a race; the server stamps `startsAt` from its own
   clock and writes the round document. Every client reads that one document, so the countdown
   and the start are the same for everyone regardless of how wrong their own clock is.
-- **Credits.** The wallet lives in `wallets/<uid>` and is only ever moved by the server:
-  −10 when it first sees you claim a seat, −stake when it sees a bet, +pot to the winner,
-  +stake×field to a winning bet. Client writes of `credits` are stripped, writes to another
-  player's drawer are refused, and `wallets/` is not writable at all.
+- **Every coin that moves between players.** `wallets/<uid>` holds the server's running
+  ADJUSTMENT, not a balance: −10 when it first sees you claim a seat, −stake when it sees a
+  bet, +pot to the winner, +stake×field to a winning bet. What a player is shown is
+  `coins they report earning + that adjustment`. A read adds it on and a write takes it back
+  off, so the two halves never double-count, and the zero-sum flows stay the server's alone
+  even though earning happens on the client. Writes to another player's drawer are refused
+  and `wallets/` is not writable at all.
 - **Settlement.** The server resolves the round itself from presence, clamping each reported
   distance to what the race clock allows, and records the outcome in `results/<rid>`.
 
 **The server does not own:**
 
-- **Coins.** They buy cosmetics only, so the client reports them and the server stores them.
-  If someone grants themselves a gold cursor, nothing of value moved.
+- **How many coins and gems you earn.** Gates and gem pickups are counted on the client.
+  Inflating them buys cursors and tails you did not earn, and lets you pay entry fees you did
+  not earn — but bets are capped at 25 a race, so the damage per race is bounded.
 - **Where your cursor is.** Positions are relayed, not refereed.
 
 ### The cheat that is still open
@@ -96,7 +114,7 @@ Closing that means replaying the run: have the client stream its cursor position
 server regenerate the maze from the seed and check every sample against the walls and gates.
 The maze functions are deterministic and seed-driven, so this is a port of `centerX`,
 `halfW`, `gateAt` and `pillarsFor` into `server/game.js` plus a position log. Worth doing if
-credits ever become worth anything; overkill for a game among friends.
+coins ever become worth anything; overkill for a game among friends.
 
 ## Deploying to a DigitalOcean droplet
 
@@ -172,8 +190,8 @@ not the multiplayer, which needs a live socket.
 | `DATA_FILE` | `data/store.json` | where documents persist |
 | `SESSION_SECRET` | generated into `data/secret` | set this in production |
 | `JOIN_WINDOW` | 30000 | how long the gate stays open, ms |
-| `ENTRY_FEE` | 10 | credits per seat |
-| `START_CREDITS` | 100 | balance for a new player |
+| `ENTRY_FEE` | 10 | coins per seat |
+| `START_COINS` | 100 | coins for a new player |
 | `RESULT_HOLD` | 9000 | how long results stay up before the board clears |
 | `TABLE_CAP` | 10 | pilots per table |
 | `GOOGLE_CLIENT_ID` | — | set both to enable Google sign-in |

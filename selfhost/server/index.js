@@ -53,19 +53,36 @@ function cookieOf(req, name) {
 
 const store = new Store(DATA);
 
-/* ---------- wallet: the server's ledger, never the client's ---------- */
-function wallet(uid) {
+/* ---------- the coin ledger ----------
+   Coins are both earned (gates, a client-side count) and staked (entry fees,
+   pots, bets). Rather than fight the client for one number, the server keeps
+   only its own ADJUSTMENT: the net of every entry, pot and bet it has applied.
+
+       shown balance = coins the client reports earning + the server's adjustment
+
+   A read adds the adjustment on, a write takes it back off, so the two never
+   double-count each other. The zero-sum flows are therefore the server's alone,
+   while earning stays where it can actually be observed. */
+function adjOf(uid) {
   const w = store.get("wallets/" + uid);
-  if (w && typeof w.credits === "number") return w.credits;
-  store.set("wallets/" + uid, { credits: G.START_CREDITS, created: Date.now() });
-  return G.START_CREDITS;
+  if (w && typeof w.coinAdj === "number") return w.coinAdj;
+  store.set("wallets/" + uid, { coinAdj: G.START_COINS, created: Date.now() });
+  return G.START_COINS;
 }
+function earnedOf(uid) {
+  const p = store.get("data/users/" + uid + "/profile");
+  return p && typeof p.coins === "number" ? Math.max(0, Math.floor(p.coins)) : 0;
+}
+function balance(uid) { return Math.max(0, Math.round(earnedOf(uid) + adjOf(uid))); }
+
 function move(uid, delta, why) {
-  const before = wallet(uid);
-  const after = Math.max(0, Math.round(before + delta));
-  store.set("wallets/" + uid, { credits: after, updated: Date.now() });
-  if (delta) console.log("  ledger %s %s%d -> %d (%s)", uid.slice(0, 10), delta > 0 ? "+" : "", delta, after, why);
-  return after;
+  const next = adjOf(uid) + delta;
+  store.set("wallets/" + uid, { coinAdj: next, updated: Date.now() });
+  if (delta) {
+    console.log("  ledger %s %s%d -> %d coins (%s)",
+      uid.slice(0, 10), delta > 0 ? "+" : "", delta, balance(uid), why);
+  }
+  return balance(uid);
 }
 
 /* ---------- the room ---------- */
@@ -151,7 +168,7 @@ function readFor(uid, p) {
   const m = /^data\/users\/([^/]+)\/profile$/.exec(p);
   if (m) {
     if (m[1] !== uid) return null;                       // another player's drawer
-    return Object.assign({}, body || {}, { credits: wallet(uid) });
+    return Object.assign({}, body || {}, { coins: balance(uid) });
   }
   if (p.startsWith("wallets/") || p.startsWith("identities/")) return null;
   const u = /^users\/([^/]+)$/.exec(p);
@@ -175,7 +192,7 @@ function writeFor(uid, p, data, mode) {
       return null;
     }
     if (live) return "not_permitted";
-    if (wallet(uid) < G.ENTRY_FEE) return "not_permitted";
+    if (balance(uid) < G.ENTRY_FEE) return "not_permitted";
     openRound(table, rid, uid);
     return null;
   }
@@ -185,7 +202,12 @@ function writeFor(uid, p, data, mode) {
   if (m) {
     if (m[1] !== uid) return "not_permitted";
     const clean = Object.assign({}, data);
-    delete clean.credits;                                // ledger wins, always
+    // the client sends the balance it was shown, which already includes the
+    // server's adjustment: take it back off so the next read does not add twice
+    if (typeof clean.coins === "number") {
+      clean.coins = Math.max(0, Math.round(clean.coins - adjOf(uid)));
+    }
+    if (typeof clean.gems === "number") clean.gems = Math.max(0, Math.floor(clean.gems));
     if (mode === "update") store.update(p, clean); else store.set(p, clean);
     return null;
   }
@@ -222,7 +244,7 @@ function ledger(uid, pres, peerId, table) {
     let e = r.entrants.get(uid);
     if (!e) {
       if (Date.now() > r.startsAt + 500) return;             // gate already shut
-      if (wallet(uid) < G.ENTRY_FEE) return;                 // cannot afford a seat
+      if (balance(uid) < G.ENTRY_FEE) return;                 // cannot afford a seat
       e = { peer: peerId, name: String(pres.who || "pilot").slice(0, 14), dist: 0, state: "ready", paid: true };
       r.entrants.set(uid, e);
       move(uid, -G.ENTRY_FEE, "entry " + r.rid);
@@ -239,7 +261,7 @@ function ledger(uid, pres, peerId, table) {
   if (bet && typeof bet.on === "string" && !r.bets.has(uid)) {
     const amt = Math.round(Number(bet.amt) || 0);
     if (!G.STAKES.includes(amt)) return;
-    if (wallet(uid) < amt) return;
+    if (balance(uid) < amt) return;
     if (r.settled) return;
     r.bets.set(uid, { on: bet.on, amt, paid: true });
     move(uid, -amt, "bet " + r.rid);
@@ -428,7 +450,7 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { "content-type": MIME[".json"], "set-cookie": setCookie, "cache-control": "no-store" });
     return res.end(JSON.stringify({
       uid,
-      credits: wallet(uid),
+      coins: balance(uid),
       googleEnabled: google.configured(),
       account: acct ? { name: acct.name || "", email: acct.email || "", picture: acct.picture || "" } : null
     }));
@@ -495,7 +517,7 @@ const server = http.createServer((req, res) => {
           picture: claims.picture || "",
           updated: Date.now()
         });
-        wallet(target);
+        balance(target);
         console.log("signed in %s as %s", target.slice(0, 10), claims.email || claims.sub);
         res.writeHead(302, {
           location: "/",

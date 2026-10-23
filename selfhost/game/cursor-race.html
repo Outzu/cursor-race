@@ -110,11 +110,18 @@
     color: var(--dim);
   }
   .coinline b { color: var(--amber); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #gemLine b { color: #8ef7ea; }
   .pip {
     width: 9px; height: 9px;
     border-radius: 50%;
     background: var(--amber);
     box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 28%, transparent);
+  }
+  .pip.gem {
+    border-radius: 2px;
+    background: #8ef7ea;
+    transform: rotate(45deg);
+    box-shadow: 0 0 0 2px rgba(142, 247, 234, .28);
   }
   .coinline.ping b { color: #fff; }
   .coinline.ping .pip { transform: scale(1.45); }
@@ -584,6 +591,7 @@
         <div class="big" id="distBig">0</div>
         <div class="unit">metres clear</div>
         <div class="coinline" id="coinLine"><span class="pip"></span><b id="coinNow">0</b><span id="coinWord">coins</span></div>
+        <div class="coinline" id="gemLine" hidden><span class="pip gem"></span><b id="gemNow">0</b><span>gems</span></div>
       </div>
     </div>
   </div>
@@ -598,8 +606,8 @@
     <div class="card">
       <h2>Wallet</h2>
       <div class="purse">
-        <div class="cr"><b id="crNum">100</b><em>credits</em></div>
-        <div class="co"><b id="coNum">0</b><em>coins</em></div>
+        <div class="cr"><b id="coinNum">100</b><em>coins</em></div>
+        <div class="co"><b id="gemNum">0</b><em>gems</em></div>
       </div>
       <button class="go ghost sm wide" id="toLobby" style="margin-top:10px">Back to lobby</button>
     </div>
@@ -626,9 +634,9 @@
     </div>
 
     <div class="card">
-      <h2><span>Tail</span><span>mix with any cursor</span></h2>
+      <h2><span>Tail</span><span id="gemTotal">0 gems</span></h2>
       <div class="skins" id="tails"></div>
-      <div class="hint" id="tailHint">tails leave marks in the channel</div>
+      <div class="hint" id="tailHint">gems are picked up on the channel</div>
     </div>
 
     <div class="card scroller">
@@ -657,7 +665,7 @@
   const TABLE_CAP = 10;
   const tableName = id => "Table " + (TABLES.indexOf(id) + 1);
   const ENTRY_FEE = 10;
-  const START_CREDITS = 100;
+  const START_COINS = 100;
   const STAKES = [5, 10, 25];
   const RESULT_HOLD = 9000;
 
@@ -762,6 +770,60 @@
     pillarCache.set(key, list);
     return list;
   }
+  /* Gems are seeded like everything else, so every pilot sees the same ones in
+     the same places — what differs is who reaches each one first. Each one has
+     its own `appearY`: near the top it scrolls in the ordinary way, further down
+     it blinks into existence already inside the view. It is measured down the
+     screen rather than ahead of `dist`, because the cursor itself rides a few
+     hundred units ahead of `dist` — key it the other way and the late ones pop
+     in behind the player and can never be caught. */
+  const GEM_EVERY = 1100, GEM_R = 14;
+  const gemCache = new Map();
+  function gemsForBucket(n, wd) {
+    const key = wd.seed + ":g" + n;
+    let list = gemCache.get(key);
+    if (list) return list;
+    const rnd = mulberry32(hashStr(key));
+    const count = rnd() < 0.12 ? 0 : rnd() < 0.62 ? 1 : 2;
+    list = [];
+    for (let i = 0; i < count; i++) {
+      let u = (n + (i + 0.2 + rnd() * 0.6) / Math.max(1, count)) * GEM_EVERY;
+      // never hide one inside a gate bar, where it could not be taken
+      const off = ((u - GATE_START) % GATE_SPACE + GATE_SPACE) % GATE_SPACE;
+      if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
+      const room = Math.max(0, halfW(u) - GEM_R - 26);
+      list.push({
+        id: "g" + n + "-" + i,
+        u,
+        x: centerX(u, wd) + (rnd() * 2 - 1) * room,
+        appearY: 60 + rnd() * 380
+      });
+    }
+    if (gemCache.size > 80) gemCache.clear();
+    gemCache.set(key, list);
+    return list;
+  }
+  function gemsNear(uMin, uMax, wd) {
+    const out = [];
+    const from = Math.max(0, Math.floor(uMin / GEM_EVERY) - 1);
+    const to = Math.ceil(uMax / GEM_EVERY) + 1;
+    for (let n = from; n <= to; n++) {
+      for (const g of gemsForBucket(n, wd)) if (g.u > uMin && g.u < uMax) out.push(g);
+    }
+    return out;
+  }
+  function gemById(id, wd) {
+    const m = /^g(\d+)-(\d+)$/.exec(id);
+    if (!m) return null;
+    return gemsForBucket(Number(m[1]), wd)[Number(m[2])] || null;
+  }
+  /* 0 while out of sight, ramping to 1 as it appears; only takeable at 1 */
+  function gemShow(g, dist) {
+    const y = H - (g.u - dist);          // where it sits down the screen
+    if (y < g.appearY || y > H + 40) return 0;
+    return Math.min(1, (y - g.appearY) / 70);
+  }
+
   function pillarsNear(uMin, uMax, wd) {
     const out = [];
     const from = Math.max(1, breakIndex(uMin) - 1), to = breakIndex(uMax) + 1;
@@ -809,11 +871,11 @@
       c.strokeStyle = withA(col, .45); c.lineWidth = 2;
       c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
     } },
-    { id: "ring", name: "Ring", cost: 12, draw(c, x, y, col) {
+    { id: "ring", name: "Ring", cost: 40, draw(c, x, y, col) {
       c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
     } },
-    { id: "arrow", name: "Arrow", cost: 30, draw(c, x, y, col) {
+    { id: "arrow", name: "Arrow", cost: 90, draw(c, x, y, col) {
       c.save(); c.translate(x, y);
       c.beginPath();
       c.moveTo(0, 0); c.lineTo(0, 17); c.lineTo(4.6, 12.8); c.lineTo(7.8, 19.6);
@@ -822,7 +884,7 @@
       c.strokeStyle = "rgba(7,11,22,.7)"; c.lineWidth = 1.4; c.stroke();
       c.restore();
     } },
-    { id: "cross", name: "Cross", cost: 60, draw(c, x, y, col) {
+    { id: "cross", name: "Cross", cost: 160, draw(c, x, y, col) {
       c.strokeStyle = col; c.lineWidth = 2; c.beginPath();
       const arms = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       for (const a of arms) { c.moveTo(x + a[0] * 5, y + a[1] * 5); c.lineTo(x + a[0] * 14, y + a[1] * 14); }
@@ -831,7 +893,7 @@
       c.beginPath(); c.arc(x, y, 9, 0, TAU); c.stroke();
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 2.2, 0, TAU); c.fill();
     } },
-    { id: "blade", name: "Blade", cost: 100, draw(c, x, y, col, now) {
+    { id: "blade", name: "Blade", cost: 260, draw(c, x, y, col, now) {
       c.save(); c.translate(x, y); c.rotate(now / 260); c.fillStyle = col;
       for (let i = 0; i < 3; i++) {
         c.rotate(TAU / 3);
@@ -841,7 +903,7 @@
       c.fillStyle = "#070b16"; c.beginPath(); c.arc(x, y, 3.4, 0, TAU); c.fill();
       c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); c.arc(x, y, 3.4, 0, TAU); c.stroke();
     } },
-    { id: "comet", name: "Comet", cost: 160, draw(c, x, y, col, now) {
+    { id: "comet", name: "Comet", cost: 560, draw(c, x, y, col, now) {
       for (let i = 3; i >= 1; i--) {
         c.fillStyle = withA(col, .15 * i);
         c.beginPath(); c.arc(x, y + i * 5.5, 6.5 - i * 1.3, 0, TAU); c.fill();
@@ -853,7 +915,7 @@
         c.beginPath(); c.arc(x + Math.cos(t) * 12, y + Math.sin(t) * 12, 1.8, 0, TAU); c.fill();
       }
     } },
-    { id: "prism", name: "Prism", cost: 240, draw(c, x, y, col, now) {
+    { id: "prism", name: "Prism", cost: 760, draw(c, x, y, col, now) {
       const tri = (r) => {
         c.beginPath();
         for (let i = 0; i < 3; i++) {
@@ -868,7 +930,7 @@
       c.save(); c.rotate(-now / 430); c.fillStyle = col; tri(5.5); c.fill(); c.restore();
       c.restore();
     } },
-    { id: "halo", name: "Halo", cost: 360, draw(c, x, y, col, now) {
+    { id: "halo", name: "Halo", cost: 1000, draw(c, x, y, col, now) {
       const p = 1 + 0.12 * Math.sin(now / 240);
       c.strokeStyle = withA(col, .38); c.lineWidth = 2;
       c.beginPath(); c.arc(x, y, 14 * p, 0, TAU); c.stroke();
@@ -878,7 +940,7 @@
       const t = now / 420;
       c.beginPath(); c.arc(x + Math.cos(t) * 17, y + Math.sin(t) * 17, 2.6, 0, TAU); c.fill();
     } },
-    { id: "glow", name: "Glow", cost: 420, draw(c, x, y, col) {
+    { id: "glow", name: "Glow", cost: 400, draw(c, x, y, col) {
       c.save();
       c.shadowColor = col; c.shadowBlur = 18;
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill();
@@ -887,7 +949,7 @@
       c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
       c.restore();
     } },
-    { id: "spectrum", name: "Spectrum", cost: 500, draw(c, x, y, col, now) {
+    { id: "spectrum", name: "Spectrum", cost: 1300, draw(c, x, y, col, now) {
       const hc = "hsl(" + ((now / 7) % 360) + " 95% 62%)";
       c.save();
       c.shadowColor = hc; c.shadowBlur = 20;
@@ -897,7 +959,7 @@
       c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
       c.restore();
     } },
-    { id: "bullion", name: "Bullion", cost: 600, draw(c, x, y, col, now) {
+    { id: "bullion", name: "Bullion", cost: 1700, draw(c, x, y, col, now) {
       c.save();
       c.shadowColor = "#ffcf5c"; c.shadowBlur = 22;
       const g = c.createRadialGradient(x - 2.5, y - 2.5, 0.5, x, y, 8.5);
@@ -922,21 +984,21 @@
     { id: "none", name: "None", cost: 0 },
     { id: "wisp", name: "Wisp", cost: 0, width: 3, plain: true,
       color: (f, col) => withA(col, .1 + .3 * f) },
-    { id: "flare", name: "Flare", cost: 120, width: 9,
+    { id: "flare", name: "Flare", cost: 8, width: 9,
       color: (f, col) => col,
       spark: { rate: 26, life: 900, size: 2.2, spread: 34, color: col => col } },
-    { id: "rainbow", name: "Rainbow", cost: 220, width: 10,
+    { id: "rainbow", name: "Rainbow", cost: 18, width: 10,
       color: (f, col, now) => "hsl(" + (((1 - f) * 300 + now / 7) % 360) + " 95% 60%)",
       spark: { rate: 32, life: 1200, size: 2.5, spread: 52,
                color: (col, now) => "hsl(" + ((now / 3) % 360) + " 95% 65%)" } },
-    { id: "gold", name: "Gold", cost: 340, width: 10,
+    { id: "gold", name: "Gold", cost: 35, width: 10,
       color: f => (f > .62 ? "#ffeeb0" : f > .3 ? "#ffc33d" : "#b8780f"),
       spark: { rate: 34, life: 1700, size: 2.3, spread: 24, twinkle: true,
                color: () => "#ffe9a3" } },
-    { id: "sparks", name: "Sparks", cost: 460, width: 7,
+    { id: "sparks", name: "Sparks", cost: 60, width: 7,
       color: (f, col) => col,
       spark: { rate: 58, life: 700, size: 2.8, spread: 135, fall: true, color: col => col } },
-    { id: "smoke", name: "Smoke", cost: 600, width: 12,
+    { id: "smoke", name: "Smoke", cost: 90, width: 12,
       color: (f, col) => withA(col, .2 + .35 * f),
       spark: { rate: 18, life: 2400, size: 5, spread: 14, grow: true,
                color: col => withA(col, .4) } }
@@ -1026,9 +1088,12 @@
     color: COLORS[0],
     skin: "dot",
     tail: "wisp",
-    coins: 0,
-    credits: START_CREDITS,
+    coins: START_COINS,
+    gems: 0,
     runCoins: 0,
+    runGems: 0,
+    gemsTaken: new Map(),
+    gemPending: new Set(),
     gatesPassed: 0,
     wins: 0,
     peers: [],          // everyone at my table
@@ -1144,6 +1209,11 @@
           paintRail();
           if (S.phase === "idle" || (S.phase === "open" && !withinWarmup())) paintVeil();
         }, () => { S.peers = []; });
+        r.on("gem", msg => {
+          const d = msg && msg.data;
+          if (!d || typeof d.id !== "string" || !/^g\d+-\d+$/.test(d.id)) return;
+          takeGem(d.id, msg.peer, !!msg.sameTab);
+        }, () => {});
       } catch (e) {
         S.table = null;
         say(e && e.code === "limit_reached" ? "that table is full" : "could not take a seat");
@@ -1200,6 +1270,8 @@
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
     S.newUnlocks = []; S.entrants = 0; S.clearAt = 0;
     ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
+    $("gemLine").hidden = true;
     exitFocus();
     document.body.classList.remove("hideveil");
     document.body.classList.remove("settings");
@@ -1223,7 +1295,7 @@
     if (!S.db || !S.table) { practiceRun(); return; }
     if (S.phase !== "idle" && S.phase !== "over") return;
     if (!canOpenRace()) { say("wait for a second pilot at this table"); return; }
-    if (S.credits < ENTRY_FEE) { say("you need " + ENTRY_FEE + " credits to open a race"); return; }
+    if (S.coins < ENTRY_FEE) { say("you need " + ENTRY_FEE + " coins to open a race"); return; }
     try {
       const lock = S.db.doc("locks/" + S.table);
       const got = await lock.acquire({ holder: S.me, ttlMs: 8000 });
@@ -1239,8 +1311,8 @@
   function joinRace() {
     if (S.phase !== "open" || S.joined) return;
     if (Date.now() > S.round.startsAt - 300) { say("the gate has closed"); return; }
-    if (S.credits < ENTRY_FEE) { say("not enough credits for the " + ENTRY_FEE + " entry"); return; }
-    S.credits -= ENTRY_FEE;
+    if (S.coins < ENTRY_FEE) { say("not enough coins for the " + ENTRY_FEE + " entry"); return; }
+    S.coins -= ENTRY_FEE;
     S.joined = true;
     S.bet = null;
     saveProfile(); pushPresence(true); paintVeil(); paintRail();
@@ -1256,6 +1328,8 @@
     S.dist = 0; S.trail = []; S.death = null; S.result = null;
     S.runCoins = 0; S.gatesPassed = 0; S.newUnlocks = []; S.entrants = 1;
     ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
+    $("gemLine").hidden = true;
     document.body.classList.remove("hideveil");
     $("coinNow").textContent = "0";
     enterFocus(true);
@@ -1299,10 +1373,10 @@
     if (S.joined || S.bet) return;
     if (S.phase !== "open" && S.phase !== "watching") return;
     const amt = S.stake;
-    if (S.credits < amt) { say("not enough credits for a " + amt + " credit bet"); return; }
+    if (S.coins < amt) { say("not enough coins for a " + amt + " coin bet"); return; }
     const target = roundField().find(p => p.peer === peerId);
     if (!target || (!target.racing && !target.pending)) { say("that pilot is already out"); return; }
-    S.credits -= amt;
+    S.coins -= amt;
     S.bet = { on: peerId, amt };
     saveProfile(); pushPresence(true); paintRail(); paintVeil();
   }
@@ -1326,7 +1400,7 @@
     let gain = 0, betWon = 0;
     if (!S.practice && S.joined && winner && winner.isMe) { gain = pot; S.wins += 1; }
     if (!S.practice && S.bet && winner && S.bet.on === winner.peer) betWon = S.bet.amt * n;
-    S.credits += gain + betWon;
+    S.coins += gain + betWon;
     S.settled = true;
     S.phase = "over";
     // the winner is whoever is still flying, so they are ahead even if their
@@ -1397,30 +1471,68 @@
     S.runCoins += gained;
     S.coins += gained;
     for (const s of SKINS) if (s.cost > before && s.cost <= S.coins) S.newUnlocks.push(s.name);
-    for (const t of TAILS) if (t.cost > before && t.cost <= S.coins) S.newUnlocks.push(t.name + " tail");
     $("coinNow").textContent = String(S.runCoins);
     $("coinWord").textContent = S.runCoins === 1 ? "coin" : "coins";
     pingUntil = performance.now() + 160;
     $("coinLine").classList.add("ping");
   }
 
+  /* A gem goes to whoever touches it first. The claim is broadcast and the room
+     relays in one order for everybody, so the first claim to come back is the
+     winner on every screen and nobody has to arbitrate. */
+  function claimGem(id) {
+    if (S.gemsTaken.has(id) || S.gemPending.has(id)) return;
+    if (S.tableRoom) {
+      S.gemPending.add(id);
+      S.tableRoom.emit("gem", { id }).catch(() => S.gemPending.delete(id));
+    } else {
+      takeGem(id, "me", true);
+    }
+  }
+  function takeGem(id, peer, mine) {
+    if (S.gemsTaken.has(id)) return;
+    S.gemsTaken.set(id, peer);
+    S.gemPending.delete(id);
+    const g = gemById(id, S.world);
+    if (g) {
+      for (let i = 0; i < 10; i++) {
+        const a = Math.random() * TAU, sp = 90 * (0.3 + Math.random() * 0.7);
+        PARTS.push({
+          x: g.x, u: g.u, vx: Math.cos(a) * sp, vu: Math.sin(a) * sp,
+          born: performance.now(), life: 700, size: 2.6,
+          col: mine ? "#8ef7ea" : "rgba(142,247,234,.45)",
+          grow: false, twinkle: false, fall: false
+        });
+      }
+    }
+    if (!mine) return;
+    const before = S.gems;
+    S.gems += 1;
+    S.runGems += 1;
+    for (const t of TAILS) if (t.cost > before && t.cost <= S.gems) S.newUnlocks.push(t.name + " tail");
+    $("gemNow").textContent = String(S.runGems);
+    $("gemLine").hidden = false;
+    saveProfile();
+  }
+
   /* ---------- profile ---------- */
   function saveProfile() {
-    const body = { coins: S.coins, credits: S.credits, skin: S.skin, tail: S.tail, name: S.name, color: S.color };
+    const body = { coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail, name: S.name, color: S.color };
     try { localStorage.setItem("cr.profile", JSON.stringify(body)); } catch (e) {}
     if (S.profileRef) S.profileRef.set(body).catch(() => {});
     paintRail();
   }
   function applyProfile(p, remote) {
     if (!p || typeof p !== "object") return;
-    if (typeof p.coins === "number") S.coins = remote ? Math.max(S.coins, Math.floor(p.coins)) : Math.floor(p.coins);
-    if (typeof p.credits === "number") S.credits = Math.max(0, Math.floor(p.credits));
+    // coins are money now, so the stored balance wins rather than the larger of the two
+    if (typeof p.coins === "number") S.coins = Math.max(0, Math.floor(p.coins));
+    if (typeof p.gems === "number") S.gems = Math.max(0, Math.floor(p.gems));
     if (typeof p.name === "string" && !S.name) S.name = p.name.slice(0, 14);
     if (COLORS.includes(p.color)) S.color = p.color;
     const sk = skinById(p.skin);
     if (sk.cost <= S.coins) S.skin = sk.id;
     const tl = tailById(p.tail);
-    if (tl.cost <= S.coins) S.tail = tl.id;
+    if (tl.cost <= S.gems) S.tail = tl.id;
   }
   function refreshIdentity() {
     nameInput.value = S.name;
@@ -1594,6 +1706,34 @@
       ctx.restore();
     }
 
+    for (const g of gemsNear(uMin - 120, uMax + 120, wd)) {
+      if (S.gemsTaken.has(g.id)) continue;
+      const ph = gemShow(g, dist);
+      if (ph <= 0) continue;
+      const y = H - (g.u - dist);
+      const r = GEM_R * (0.4 + 0.6 * ph) * (1 + 0.06 * Math.sin(now / 220 + g.u));
+      ctx.save();
+      ctx.globalAlpha = ph;
+      ctx.translate(g.x, y);
+      ctx.rotate(now / 900 + g.u);
+      ctx.shadowColor = "#8ef7ea";
+      ctx.shadowBlur = 16 * ph;
+      const grad = ctx.createLinearGradient(-r, -r, r, r);
+      grad.addColorStop(0, "#d8fffa");
+      grad.addColorStop(.5, "#8ef7ea");
+      grad.addColorStop(1, "#28b6a8");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.moveTo(0, -r); ctx.lineTo(r * .72, 0); ctx.lineTo(0, r); ctx.lineTo(-r * .72, 0);
+      ctx.closePath(); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.strokeStyle = "rgba(255,255,255,.75)";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(-r * .72, 0); ctx.lineTo(0, r); ctx.stroke();
+      ctx.restore();
+    }
+    ctx.globalAlpha = 1;
+
     drawParticles(ctx, dist, now);
 
     // other pilots
@@ -1707,6 +1847,13 @@
           }
           if (S.trail.length > 28) S.trail.shift();
           emitParticles("me", tailById(S.tail), S.color, S.cx, S.dist + H - S.cy, now, 1);
+          const uNow = S.dist + H - S.cy;
+          for (const g of gemsNear(uNow - 260, uNow + 260, S.world)) {
+            if (S.gemsTaken.has(g.id) || S.gemPending.has(g.id)) continue;
+            if (gemShow(g, S.dist) < 1) continue;
+            const dx = S.cx - g.x, dy = (H - (g.u - S.dist)) - S.cy;
+            if (dx * dx + dy * dy < (GEM_R + R) * (GEM_R + R)) claimGem(g.id);
+          }
           S.entrants = Math.max(S.entrants, roundField().length);
         }
       }
@@ -1803,8 +1950,8 @@
   /* ---------- the veil ---------- */
   function wrapHTML(inner) { return '<div class="wrap">' + inner + '</div>'; }
   function walletLine() {
-    return '<div class="stat"><span>credits <b class="cr">' + S.credits + '</b></span>' +
-           '<span>coins <b class="co">' + S.coins + '</b></span>' +
+    return '<div class="stat"><span>coins <b class="cr">' + S.coins + '</b></span>' +
+           '<span>gems <b class="co">' + S.gems + '</b></span>' +
            '<span>entry <b>' + ENTRY_FEE + '</b></span></div>';
   }
   function noteLine() {
@@ -1844,11 +1991,11 @@
         entrantStrip() +
         '<div class="stat"><span>prize pot <b class="cr">' + pot + '</b></span>' +
           '<span>entry <b>' + ENTRY_FEE + '</b></span>' +
-          '<span>your credits <b class="cr">' + S.credits + '</b></span></div>' +
+          '<span>your coins <b class="cr">' + S.coins + '</b></span></div>' +
         '<div class="btnrow">' +
           (S.joined
             ? '<button class="go" disabled>Seat confirmed</button>'
-            : '<button class="go" data-act="join">Join &middot; ' + ENTRY_FEE + ' credits</button>') +
+            : '<button class="go" data-act="join">Join &middot; ' + ENTRY_FEE + ' coins</button>') +
           (S.joined ? '' : '<button class="go ghost" data-act="watch">Watch and bet</button>') +
         '</div>' +
         '<p>' + (S.joined
@@ -1863,8 +2010,8 @@
       const m = Math.round((S.death ? S.death.dist : S.dist) / 10);
       const unlocked = S.newUnlocks.length
         ? '<div class="unlocked-note">new cursor: ' + esc(S.newUnlocks.join(", ")) + '</div>' : '';
-      const betLine = r && r.betWon ? " Your bet paid " + r.betWon + " credits."
-        : (S.bet ? " Your bet lost " + S.bet.amt + " credits." : "");
+      const betLine = r && r.betWon ? " Your bet paid " + r.betWon + " coins."
+        : (S.bet ? " Your bet lost " + S.bet.amt + " coins." : "");
       let head, verdict, detail;
       if (S.practice) {
         head = String(m);
@@ -1873,11 +2020,11 @@
       } else if (r && r.iWon) {
         head = "LAST<br><span class='race'>POINTER</span>";
         verdict = "you took the pot";
-        detail = "Won " + r.gain + " credits from a " + r.pot + " credit pot, " + r.of + " entrants.";
+        detail = "Won " + r.gain + " coins from a " + r.pot + " coin pot, " + r.of + " entrants.";
       } else if (r && !S.joined) {
         head = String(Math.round(r.best / 10));
         verdict = esc(r.winner) + " took the pot";
-        detail = "A " + r.pot + " credit pot from " + r.of + " entrants." + betLine;
+        detail = "A " + r.pot + " coin pot from " + r.of + " entrants." + betLine;
       } else if (r) {
         head = String(m);
         verdict = (S.death ? esc(S.death.why) : "out") + " at " + m + " m";
@@ -1920,9 +2067,10 @@
         '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
         '<div><b>The channel narrows and speeds up</b> the further you get.</div>' +
         '<div><b>Last pointer still inside takes the whole pot.</b></div>' +
-        '<div><b>Opening a race starts a 30 second gate</b> &mdash; ' + ENTRY_FEE + ' credits a seat.</div>' +
+        '<div><b>Opening a race starts a 30 second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
         '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
-        '<div><b>Every gate you clear pays 1 coin</b> and coins unlock new cursor designs.</div>' +
+        '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
+        '<div><b>Gems appear in the channel</b> &mdash; first cursor to touch one takes it. Gems buy tails.</div>' +
       '</div>' +
       walletLine() +
       '<div class="btnrow">' +
@@ -1999,8 +2147,8 @@
 
   /* ---------- rail ---------- */
   function paintRail() {
-    $("crNum").textContent = S.credits;
-    $("coNum").textContent = S.coins;
+    $("coinNum").textContent = S.coins;
+    $("gemNum").textContent = S.gems;
     $("tagline").textContent = S.practice ? "practice run"
       : S.table ? tableName(S.table).toLowerCase() + " / last pointer standing"
       : "last pointer standing";
@@ -2030,7 +2178,7 @@
       const html = rows || '<div class="empty">No pilots yet.</div>';
       if ($("betList").dataset.h !== html) { $("betList").dataset.h = html; $("betList").innerHTML = html; }
       $("betHint").textContent = S.bet
-        ? "returns " + (S.bet.amt * n) + " credits if your pick wins"
+        ? "returns " + (S.bet.amt * n) + " coins if your pick wins"
         : S.phase === "watching"
           ? "race in progress - back a pilot still flying"
           : "pays stake x " + n + " if your pick wins";
@@ -2126,35 +2274,36 @@
   });
 
   const previews = [];
-  function grid(host, items, chosen, sig) {
+  function grid(host, items, chosen, sig, purse, unit) {
     if (host.dataset.sig === sig) return;
     host.dataset.sig = sig;
     host.innerHTML = items.map(s => {
-      const locked = s.cost > S.coins;
+      const locked = s.cost > purse;
       return '<button class="skin' + (locked ? " locked" : "") + '" data-id="' + s.id + '"' +
-        (locked ? ' disabled aria-label="' + esc(s.name) + ', locked, needs ' + s.cost + ' coins"'
+        (locked ? ' disabled aria-label="' + esc(s.name) + ', locked, needs ' + s.cost + ' ' + unit + '"'
                 : ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"') +
         '><canvas width="68" height="68"></canvas>' +
         '<span class="lbl">' + (locked ? s.cost : esc(s.name)) + '</span></button>';
     }).join("");
     host.querySelectorAll("canvas").forEach((c, i) => previews.push({ c, item: items[i] }));
   }
-  function nextUnlock(items) {
-    const locked = items.filter(s => s.cost > S.coins);
+  function nextUnlock(items, purse) {
+    const locked = items.filter(s => s.cost > purse);
     return locked.length ? locked.reduce((a, b) => (b.cost < a.cost ? b : a)) : null;
   }
   function paintSkins() {
-    const sig = S.coins + "|" + S.skin + "|" + S.tail + "|" + S.color;
+    const sig = S.coins + "/" + S.gems + "|" + S.skin + "|" + S.tail + "|" + S.color;
     if ($("skins").dataset.sig !== sig || $("tails").dataset.sig !== sig) previews.length = 0;
-    grid($("skins"), SKINS, S.skin, sig);
-    grid($("tails"), TAILS, S.tail, sig);
+    grid($("skins"), SKINS, S.skin, sig, S.coins, "coins");
+    grid($("tails"), TAILS, S.tail, sig, S.gems, "gems");
     $("coinTotal").textContent = S.coins + (S.coins === 1 ? " coin" : " coins");
-    const nh = nextUnlock(SKINS), nt = nextUnlock(TAILS);
+    $("gemTotal").textContent = S.gems + (S.gems === 1 ? " gem" : " gems");
+    const nh = nextUnlock(SKINS, S.coins), nt = nextUnlock(TAILS, S.gems);
     $("skinHint").textContent = nh
       ? (nh.cost - S.coins) + " more coins unlocks " + nh.name.toLowerCase()
       : "every cursor unlocked";
     $("tailHint").textContent = nt
-      ? (nt.cost - S.coins) + " more coins unlocks the " + nt.name.toLowerCase() + " tail"
+      ? (nt.cost - S.gems) + " more gems unlocks the " + nt.name.toLowerCase() + " tail"
       : "every tail unlocked";
   }
   const SAMPLE = [];
@@ -2260,10 +2409,10 @@
       if (typeof saved.name === "string") S.name = saved.name;
       if (COLORS.includes(saved.color)) S.color = saved.color;
       if (typeof saved.wins === "number") S.wins = saved.wins;
-      if (typeof saved.coins === "number") S.coins = Math.max(S.coins, saved.coins);
-      if (typeof saved.credits === "number") S.credits = saved.credits;
+      if (typeof saved.coins === "number") S.coins = saved.coins;
+      if (typeof saved.gems === "number") S.gems = saved.gems;
       if (typeof saved.skin === "string" && skinById(saved.skin).cost <= S.coins) S.skin = saved.skin;
-      if (typeof saved.tail === "string" && tailById(saved.tail).cost <= S.coins) S.tail = saved.tail;
+      if (typeof saved.tail === "string" && tailById(saved.tail).cost <= S.gems) S.tail = saved.tail;
     }
     nameInput.value = S.name;
     paintSwatches();
@@ -2281,7 +2430,7 @@
   loadLocal();
   try {
     window.claude?.hot?.snapshot?.(() => ({
-      name: S.name, color: S.color, wins: S.wins, coins: S.coins, credits: S.credits,
+      name: S.name, color: S.color, wins: S.wins, coins: S.coins, gems: S.gems,
       skin: S.skin, tail: S.tail
     }));
   } catch (e) {}
