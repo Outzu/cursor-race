@@ -286,6 +286,39 @@
   body:not(.lobby) #zoom { display: none; }
 
   body.settings #ladderHud, body.focus #ladderHud { display: none; }
+
+  /* how the line to the server is holding up, in the corner opposite the
+     account chip; the bar colours are the start lights' own */
+  body.settings #netSig, body.focus #netSig { display: none; }
+  #netSig {
+    position: fixed;
+    right: max(14px, env(safe-area-inset-right, 0px));
+    bottom: max(14px, env(safe-area-inset-bottom, 0px));
+    z-index: 73;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 7px 11px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--field) 92%, transparent);
+    box-shadow: inset 0 0 0 1px var(--wall-line);
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  #netSig .bars { display: flex; align-items: flex-end; gap: 2px; height: 13px; }
+  #netSig .bars i { width: 3px; border-radius: 1px; background: currentColor; opacity: .2; }
+  #netSig .bars i:nth-child(1) { height: 4px; }
+  #netSig .bars i:nth-child(2) { height: 7px; }
+  #netSig .bars i:nth-child(3) { height: 10px; }
+  #netSig .bars i:nth-child(4) { height: 13px; }
+  #netSig .bars i.on { opacity: 1; }
+  #netSig.good { color: #4de06a; }
+  #netSig.fair { color: #ffb12e; }
+  #netSig.poor { color: #ff4d4d; }
+  #netSig b { font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
   #ladderHud {
     position: fixed;
     top: max(14px, env(safe-area-inset-top, 0px));
@@ -875,6 +908,7 @@
 <div class="veil" id="veil"></div>
 <canvas id="zoom"></canvas>
 <div id="ladderHud" hidden></div>
+<div id="netSig" hidden></div>
 
 <div id="musicCtl">
   <button id="musicBtn" aria-pressed="true" title="Lobby music">
@@ -1528,6 +1562,32 @@
 
   /* ---------- focus mode ---------- */
   const ghostTrails = new Map();
+
+  /* Another pilot's cursor arrives about twenty times a second, and drawing it
+     wherever the last packet left it steps visibly at sixty frames. So each
+     peer keeps a short buffer of the places it has been, and is drawn a tenth
+     of a second in the past, between the two samples that bracket that moment.
+     The delay is what buys the smoothing: there is almost always a later
+     sample to move towards. Only the picture is interpolated - nothing here
+     decides who wins. */
+  const GHOST_LAG = 110;
+  const ghostPaths = new Map();
+
+  function ghostAt(peer, x, y, now) {
+    let buf = ghostPaths.get(peer);
+    if (!buf) { buf = [{ t: now, x, y }]; ghostPaths.set(peer, buf); }
+    const last = buf[buf.length - 1];
+    if (last.x !== x || last.y !== y) buf.push({ t: now, x, y });
+    if (buf.length > 20) buf.splice(0, buf.length - 20);
+
+    const at = now - GHOST_LAG;
+    while (buf.length > 2 && buf[1].t <= at) buf.shift();
+    const a = buf[0], b = buf[1];
+    if (!b || at <= a.t) return [a.x, a.y];
+    if (at >= b.t) return [b.x, b.y];      // out of future: sit on the latest
+    const k = (at - a.t) / (b.t - a.t);
+    return [a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k];
+  }
   function enterFocus(fromGesture) {
     if (document.body.classList.contains("focus")) return;
     document.body.classList.add("focus");
@@ -1670,7 +1730,7 @@
     S.joined = false; S.bet = null; S.settled = false; S.result = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
     S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false;
-    ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    ghostTrails.clear(); ghostPaths.clear(); PARTS.length = 0; lastSpark.clear();
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
     $("gemLine").hidden = true;
@@ -1737,7 +1797,7 @@
     S.phase = "open";
     S.dist = 0; S.trail = []; S.death = null; S.result = null;
     S.runCoins = 0; S.gatesPassed = 0; S.newUnlocks = []; S.entrants = 1;
-    ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    ghostTrails.clear(); ghostPaths.clear(); PARTS.length = 0; lastSpark.clear();
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
     $("gemLine").hidden = true;
@@ -2251,8 +2311,10 @@
     for (const p of S.peers) {
       const pr = p.presence;
       if (!pr || p.sameTab || pr.rid !== S.rid || !pr.joined || !pr.cursor) continue;
-      const gx = Number(pr.cursor.x) * W, gy = Number(pr.cursor.y) * H;
-      if (!isFinite(gx) || !isFinite(gy)) continue;
+      const rx = Number(pr.cursor.x) * W, ry = Number(pr.cursor.y) * H;
+      if (!isFinite(rx) || !isFinite(ry)) continue;
+      const smooth = ghostAt(p.peer, rx, ry, now);
+      const gx = smooth[0], gy = smooth[1];
       const col = typeof pr.color === "string" ? pr.color : "#8b99bb";
       const out = pr.state !== "racing";
       const sk = skinById(pr.skin);
@@ -2287,6 +2349,7 @@
       ctx.globalAlpha = 1;
     }
     for (const k of ghostTrails.keys()) if (!seen.has(k)) ghostTrails.delete(k);
+    for (const k of ghostPaths.keys()) if (!seen.has(k)) ghostPaths.delete(k);
 
     // own cursor
     const amRacer = S.joined && (S.phase === "racing" || (S.phase === "open" && withinWarmup()));
@@ -2404,7 +2467,7 @@
     if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
     if (now - lastRail > 140) {
       lastRail = now;
-      paintRail(); drawPreviews(now); tickVeil(); paintLadderHud();
+      paintRail(); drawPreviews(now); tickVeil(); paintLadderHud(); paintNetSig();
       $("pingTag").textContent = S.ping === null ? "" : "ping " + S.ping + " ms";
     }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
@@ -2517,6 +2580,28 @@
     ZOOM.length = 0;
     zoomLast = 0;
     zoomX.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  }
+
+  /* four bars and the round trip: green under 120 ms, amber to 220, red past
+     that, and dark when there is no channel at all */
+  function paintNetSig() {
+    const el = $("netSig");
+    const live = !!(S.room && S.room.connected && S.room.connected());
+    const ms = S.ping;
+    let bars = 0, grade = "", label = "no channel";
+    if (live && ms !== null) {
+      bars = ms < 60 ? 4 : ms < 120 ? 3 : ms < 220 ? 2 : 1;
+      grade = ms < 120 ? "good" : ms < 220 ? "fair" : "poor";
+      label = "<b>" + ms + "</b> ms";
+    } else if (live) {
+      label = "measuring";
+    }
+    const html = '<span class="bars">' +
+      [1, 2, 3, 4].map(i => '<i' + (i <= bars ? ' class="on"' : '') + '></i>').join("") +
+      '</span><span>' + label + '</span>';
+    if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
+    if (el.className !== grade) el.className = grade;
+    if (el.hidden) el.hidden = false;
   }
 
   function paintLadderHud() {
@@ -3207,7 +3292,7 @@
       }
     };
     beat();
-    setInterval(beat, 4000);
+    setInterval(beat, 2500);
 
     pushLobbyPresence();
   }
