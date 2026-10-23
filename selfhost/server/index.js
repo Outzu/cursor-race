@@ -133,7 +133,17 @@ setInterval(() => {
 function joinRoom(peerId, name) {
   let set = rooms.get(name);
   if (!set) { set = new Set(); rooms.set(name, set); }
-  if (!set.has(peerId) && set.size >= G.TABLE_CAP) return "limit_reached";
+  // the cap counts players, not tabs — a second tab of someone already seated
+  // takes no extra seat
+  if (!set.has(peerId)) {
+    const me = peers.get(peerId);
+    const seated = new Set();
+    for (const id of set) {
+      const p = peers.get(id);
+      if (p) seated.add(p.uid);
+    }
+    if (!(me && seated.has(me.uid)) && seated.size >= G.TABLE_CAP) return "limit_reached";
+  }
   set.add(peerId);
   const p = peers.get(peerId);
   if (p && !p.rooms.has(name)) p.rooms.set(name, {});
@@ -263,7 +273,12 @@ function ledger(uid, pres, peerId, table) {
     if (!G.STAKES.includes(amt)) return;
     if (balance(uid) < amt) return;
     if (r.settled) return;
-    r.bets.set(uid, { on: bet.on, amt, paid: true });
+    // resolve the backed tab to a player now, while that peer is still around,
+    // so a second tab of your own cannot be backed and cannot pay you out
+    const target = peers.get(bet.on);
+    const onUid = target ? target.uid : null;
+    if (!onUid || onUid === uid) return;
+    r.bets.set(uid, { on: bet.on, onUid, amt, paid: true });
     move(uid, -amt, "bet " + r.rid);
   }
 }
@@ -277,14 +292,14 @@ function settle(r) {
 
   if (winner) move(winner.uid, pot, "pot " + r.rid);
   for (const [uid, b] of r.bets) {
-    if (winner && b.on === winner.peer) move(uid, b.amt * list.length, "bet won " + r.rid);
+    if (winner && b.onUid === winner.uid) move(uid, b.amt * list.length, "bet won " + r.rid);
   }
 
   store.set("results/" + r.rid, {
     rid: r.rid, table: r.table, at: Date.now(), pot,
     winner: winner ? { uid: winner.uid, name: winner.name, dist: Math.round(winner.dist) } : null,
     field: list.map(e => ({ name: e.name, dist: Math.round(e.dist) })),
-    bets: [...r.bets.values()].map(b => ({ amt: b.amt, won: !!(winner && b.on === winner.peer) }))
+    bets: [...r.bets.values()].map(b => ({ amt: b.amt, won: !!(winner && b.onUid === winner.uid) }))
   });
   console.log("%s: race %s won by %s, pot %d", r.table, r.rid, winner ? winner.name : "nobody", pot);
 

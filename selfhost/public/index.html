@@ -1296,8 +1296,15 @@
     paintVeil(); paintRail();
   }
 
-  /* a race needs someone to race against; on your own, take a practice run */
-  const pilotsHere = () => (S.tableRoom ? S.peers.length : 1);
+  /* A race needs someone to race against. Count players, not open tabs — two
+     tabs of yours are two peers but one pilot, and counting peers would let you
+     start a race against yourself. */
+  function pilotsHere() {
+    if (!S.tableRoom) return 1;
+    const ids = new Set();
+    for (const p of S.peers) ids.add(p.by || p.peer);
+    return ids.size;
+  }
   const canOpenRace = () => pilotsHere() >= 2;
 
   async function openRace() {
@@ -1352,19 +1359,31 @@
                 dist: S.death ? S.death.dist : S.dist, racing: S.phase === "racing",
                 pending: S.phase === "open", joined: true }];
     }
-    return S.peers
-      .filter(p => p.presence && p.presence.rid === S.rid && p.presence.joined === true)
-      .map(p => ({
+    // one row per player, not per tab, so the field size and the pot match what
+    // the server will actually charge and pay
+    const byId = new Map();
+    for (const p of S.peers) {
+      const pr = p.presence;
+      if (!pr || pr.rid !== S.rid || pr.joined !== true) continue;
+      const uid = p.by || p.peer;
+      const row = {
         peer: p.peer,
+        uid,
         isMe: p.sameTab,
-        name: String(p.presence.who || "pilot").slice(0, 14),
-        color: typeof p.presence.color === "string" ? p.presence.color : "#8b99bb",
-        skin: p.presence.skin,
-        dist: Number(p.presence.dist) || 0,
-        racing: p.presence.state === "racing",
-        pending: p.presence.state === "ready",
+        name: String(pr.who || "pilot").slice(0, 14),
+        color: typeof pr.color === "string" ? pr.color : "#8b99bb",
+        skin: pr.skin,
+        dist: Number(pr.dist) || 0,
+        racing: pr.state === "racing",
+        pending: pr.state === "ready",
         joined: true
-      }));
+      };
+      const prev = byId.get(uid);
+      if (!prev) { byId.set(uid, row); continue; }
+      if (prev.isMe) continue;
+      if (row.isMe || (!prev.racing && row.racing) || row.dist > prev.dist) byId.set(uid, row);
+    }
+    return [...byId.values()];
   }
   function watcherBets() {
     return S.peers
@@ -1385,6 +1404,7 @@
     if (S.coins < amt) { say("not enough coins for a " + amt + " coin bet"); return; }
     const target = roundField().find(p => p.peer === peerId);
     if (!target || (!target.racing && !target.pending)) { say("that pilot is already out"); return; }
+    if (S.uid && target.uid === S.uid) { say("you cannot back yourself"); return; }
     S.coins -= amt;
     S.bet = { on: peerId, amt };
     saveProfile(); pushPresence(true); paintRail(); paintVeil();
@@ -1408,7 +1428,8 @@
     const pot = S.practice ? 0 : n * ENTRY_FEE;
     let gain = 0, betWon = 0;
     if (!S.practice && S.joined && winner && winner.isMe) { gain = pot; S.wins += 1; }
-    if (!S.practice && S.bet && winner && S.bet.on === winner.peer) betWon = S.bet.amt * n;
+    const backed = S.bet ? field.find(p => p.peer === S.bet.on) : null;
+    if (!S.practice && backed && winner && backed.uid === winner.uid) betWon = S.bet.amt * n;
     S.coins += gain + betWon;
     S.settled = true;
     S.phase = "over";
@@ -2070,7 +2091,7 @@
     veil.innerHTML = wrapHTML(
       '<h1>CURSOR<br><span class="race">RACE</span></h1>' +
       '<div class="verdict">' + esc(tableName(S.table)) + ' &middot; ' +
-        (roundField().length || S.peers.length) + ' here</div>' +
+        pilotsHere() + (pilotsHere() === 1 ? ' pilot' : ' pilots') + ' here</div>' +
       '<div class="rules">' +
         '<div><b>Guide your cursor</b> down the channel as it scrolls.</div>' +
         '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
