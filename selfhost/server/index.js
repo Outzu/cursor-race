@@ -10,7 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { attach } = require("./ws");
-const { Store } = require("./store");
+const { Store, SplitStore } = require("./store");
 const G = require("./game");
 const google = require("./google");
 
@@ -51,7 +51,27 @@ function cookieOf(req, name) {
   return null;
 }
 
-const store = new Store(DATA);
+/* One region, or several. With no DATABASE_URL this is the single JSON file it
+   has always been. With one, races stay here and accounts live in Postgres, so
+   a player keeps their coins and their cursors whichever server they land on.
+   store.js decides which paths go where. */
+const local = new Store(DATA);
+const REGION = process.env.REGION || "";
+let shared = null;
+
+if (process.env.DATABASE_URL) {
+  const { Pool } = require("pg");
+  const { PgStore } = require("./pgstore");
+  const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: Number(process.env.DATABASE_POOL || 6),
+    ssl: process.env.DATABASE_NO_SSL ? false : { rejectUnauthorized: false }
+  });
+  pool.on("error", e => console.error("postgres pool:", e.message));
+  shared = new PgStore(pool, (...a) => console.error(...a));
+}
+
+const store = new SplitStore(local, shared);
 
 /* ---------- the purse ----------
    The server holds the only copy. Clients report what they earned on a run and
@@ -70,15 +90,16 @@ function purse(uid) {
 const balance = uid => purse(uid).coins;
 
 function move(uid, delta, why, what) {
-  const p = purse(uid);
+  purse(uid);                                   // the row has to exist first
   const key = what === "gems" ? "gems" : "coins";
-  p[key] = Math.max(0, Math.round(p[key] + delta));
-  store.set("wallets/" + uid, { coins: p.coins, gems: p.gems, updated: Date.now() });
+  // where there is a shared database it does the sum, so two regions cannot
+  // lose a delta between reading a balance and writing it back
+  const now = store.bump("wallets/" + uid, key, Math.round(delta));
   if (delta) {
     console.log("  purse %s %s%d %s -> %d (%s)",
-      uid.slice(0, 10), delta > 0 ? "+" : "", delta, key, p[key], why);
+      uid.slice(0, 10), delta > 0 ? "+" : "", delta, key, now, why);
   }
-  return p[key];
+  return now;
 }
 
 /* What a player now owns that they did not before, and what it costs. */
@@ -651,7 +672,16 @@ attach(server, "/ws", (conn, req) => {
   });
 });
 
-server.listen(PORT, () => {
-  console.log("Cursor Race on http://localhost:" + PORT);
-  console.log("store: " + DATA);
+(async () => {
+  if (shared) {
+    await shared.start();
+    console.log("shared store: postgres" + (REGION ? " (region " + REGION + ")" : ""));
+  }
+  server.listen(PORT, () => {
+    console.log("Cursor Race on http://localhost:" + PORT);
+    console.log("store: " + DATA + (shared ? "  (races only; accounts are shared)" : ""));
+  });
+})().catch(e => {
+  console.error("could not start:", e.message);
+  process.exit(1);
 });

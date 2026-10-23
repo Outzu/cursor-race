@@ -219,8 +219,49 @@ pub/sub, Firestore. Two things to keep:
 - `onChange` must fire for writes from *other* processes too, or clients behind a second
   instance will not see the round open.
 
-Until then, run a single instance. The in-memory room has the same constraint: scaling past
-one process needs the presence relay moved to Redis pub/sub.
+The in-memory room has the same constraint: a second instance *serving the same tables*
+needs the presence relay moved to Redis pub/sub. A second instance serving its own tables
+does not — see below.
+
+## A second region
+
+A race is a place; an account is an account. Those pull in opposite directions, so the store
+is split down the middle by path:
+
+| shared between regions | belongs to the server running it |
+| --- | --- |
+| `wallets/<uid>` — coins and gems | `live/<table>` — the round that table is running |
+| `users/<uid>` — the account | `locks/<table>` — who may open a race |
+| `identities/google:<sub>` | the in-memory peers, rooms and presence relay |
+| `data/users/<uid>/profile` | |
+| `board/top`, `results/…` | |
+
+`SplitStore` in `server/store.js` routes on the prefix, so neither half knows the other
+exists. With no `DATABASE_URL` both halves are the same JSON file and nothing changes —
+that is what a single region gets, and it is all most deployments need.
+
+Set `DATABASE_URL` on two servers pointing at one Postgres and they share accounts while
+keeping their own races. Players reach whichever server is nearer and meet the people
+already there; nobody races across an ocean, because at ~90 ms the player further from the
+server would lose every contested gem to the relay, which is unfairness rather than lag.
+
+Both servers must share `SESSION_SECRET`, or the same person is two different accounts —
+the Google `sub` → uid mapping lives in `identities/`, and a cookie signed by one server
+must verify on the other. Each still needs its own `PUBLIC_URL` registered in the Google
+console.
+
+`server/pgstore.js` holds the shared half in memory and serves reads from there, because
+the rest of the server reads documents synchronously mid-frame and cannot wait on a query.
+Writes go to Postgres behind that, and a poll every few seconds brings back what the other
+region changed. Balances are the exception: those are added up by the database itself
+(`GREATEST(0, coins + $delta)`), so two regions charging the same player cannot lose a
+delta between reading a balance and writing it back.
+
+`npm test` covers the split and the arithmetic against an in-memory Postgres.
+
+DigitalOcean has no GeoDNS, so sending players to the nearer server is your choice: two
+hostnames and a picker, or a Cloudflare Worker redirecting on `request.cf.country`. The
+page already measures its round trip, so it could also probe both and suggest the faster.
 
 ## Accounts and Google sign-in
 

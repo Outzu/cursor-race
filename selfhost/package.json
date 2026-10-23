@@ -4,11 +4,19 @@
   "private": true,
   "description": "Cursor Race on your own domain: static game plus a presence, document and identity server.",
   "main": "server/index.js",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "build": "node build.js",
     "start": "node build.js && node server/index.js",
-    "serve": "node server/index.js"
+    "serve": "node server/index.js",
+    "test": "node test/shared.test.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "pg-mem": "^3.0.5"
+  }
 }

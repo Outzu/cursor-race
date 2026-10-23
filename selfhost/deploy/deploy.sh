@@ -29,8 +29,19 @@ trap 'rm -rf "$STAGE"' EXIT
 tar -xzf - -C "$STAGE"
 
 sudo mkdir -p "$APP_DIR"
-sudo rsync -a --delete --exclude 'selfhost/data' "$STAGE"/ "$APP_DIR"/
+sudo rsync -a --delete   --exclude 'selfhost/data'   --exclude 'selfhost/node_modules'   "$STAGE"/ "$APP_DIR"/
 sudo chown -R cursorrace:cursorrace "$APP_DIR"
+
+# The server needs a Postgres driver only when a shared store is configured,
+# but installing it is cheap and keeps the two cases identical. node_modules is
+# left out of the rsync above so a failed install leaves the running service on
+# the last one that worked.
+if ! sudo -u cursorrace npm ci --omit=dev --prefix "$APP_DIR/selfhost" --no-audit --no-fund; then
+  echo "dependency install failed; service left on the previous build" >&2
+  exit 1
+fi
+sudo chown -R cursorrace:cursorrace "$APP_DIR"
+
 sudo systemctl restart cursor-race
 sleep 1
 

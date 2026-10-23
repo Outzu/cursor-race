@@ -83,4 +83,52 @@ class Store {
   }
 }
 
-module.exports = { Store };
+/* A race is a place and an account is an account.
+
+   Everything about a race in progress - which round a table is running, and
+   the lease that stops two people opening one at once - belongs to the server
+   running it, and stays on that machine. Everything about a player - their
+   coins, their cursors, their place on the board - is the same wherever they
+   play, and goes to a store every region shares.
+
+   Paths decide which, so neither half needs to know the other exists. With no
+   shared store configured both halves are the same object and nothing changes,
+   which is what a single-region deployment gets. */
+const REGIONAL = /^(live|locks)\//;
+
+class SplitStore {
+  constructor(local, shared) {
+    this.local = local;
+    this.shared = shared || local;
+  }
+
+  where(p) { return REGIONAL.test(p) ? this.local : this.shared; }
+
+  get(p) { return this.where(p).get(p); }
+  version(p) { return this.where(p).version(p); }
+  set(p, body) { return this.where(p).set(p, body); }
+  update(p, patch) { return this.where(p).update(p, patch); }
+  del(p) { return this.where(p).del(p); }
+  list(prefix) { return this.where(prefix).list(prefix); }
+  acquire(p, holder, ttlMs) { return this.where(p).acquire(p, holder, ttlMs); }
+
+  /* a balance the database adds up itself, where there is a database */
+  bump(p, field, delta) {
+    const s = this.where(p);
+    if (s.bump) return s.bump(p, field, delta);
+    const held = s.get(p) || { coins: 0, gems: 0 };
+    const key = field === "gems" ? "gems" : "coins";
+    const next = Object.assign({}, held, { updated: Date.now() });
+    next[key] = Math.max(0, Math.round((held[key] || 0) + delta));
+    s.set(p, next);
+    return next[key];
+  }
+
+  onChange(fn) {
+    const off = [this.local.onChange(fn)];
+    if (this.shared !== this.local) off.push(this.shared.onChange(fn));
+    return () => off.forEach(f => f());
+  }
+}
+
+module.exports = { Store, SplitStore, REGIONAL };
