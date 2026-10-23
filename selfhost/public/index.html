@@ -910,6 +910,9 @@
   const V0 = 150, TA = 22, VMAX = 760;
   const T_CAP = TA * (VMAX / V0 - 1);
   const GATE_START = 900, GATE_SPACE = 520, GATE_TH = 20;
+  /* the starting grid: a chequered band across the channel that pilots are held
+     behind while the lights are still on */
+  const GRID_U = 420, GRID_TH = 26;
 
   const JOIN_WINDOW = 10000;   // default only; the server's value wins once seen
   const TABLES = ["t1", "t2", "t3", "t4", "t5", "t6"];
@@ -1001,6 +1004,16 @@
     const gc = (lo + hi) / 2 + wd.gates[k % wd.gates.length] * span;
     return { u, gw, gc, a, b };
   }
+
+  /* the grid line spans depth just as a gate does, so it is measured at both
+     ends of its band and sits flush against the walls */
+  function gridBand(wd) {
+    const a = { c: centerX(GRID_U, wd), hw: halfW(GRID_U) };
+    const b = { c: centerX(GRID_U + GRID_TH, wd), hw: halfW(GRID_U + GRID_TH) };
+    return { a, b };
+  }
+  /* the screen row the cursor is held above-of: the near edge of the band */
+  const gridHoldY = () => H - GRID_U + R;
 
   const pillarCache = new Map();
   function pillarsFor(n, wd) {
@@ -1402,6 +1415,7 @@
     dist: 0,
     cx: W / 2, cy: H * 0.66,
     inside: false,
+    held: false,           // pressed up against the starting grid
     trail: [],
     death: null,
     joined: false,
@@ -2163,6 +2177,32 @@
       ctx.fillRect(gr, yTop, 3, GATE_TH);
     }
 
+    /* the starting grid, for as long as it is still on screen */
+    if (!demo && GRID_U + GRID_TH > uMin && GRID_U < uMax) {
+      const gb = gridBand(wd);
+      const yTop = H - (GRID_U + GRID_TH - dist), yBot = H - (GRID_U - dist);
+      const lT = gb.b.c - gb.b.hw, lB = gb.a.c - gb.a.hw;
+      const rT = gb.b.c + gb.b.hw, rB = gb.a.c + gb.a.hw;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(lT, yTop); ctx.lineTo(rT, yTop); ctx.lineTo(rB, yBot); ctx.lineTo(lB, yBot);
+      ctx.closePath();
+      ctx.clip();
+      const cell = GRID_TH / 2;
+      for (let row = 0; row < 2; row++) {
+        for (let i = -6; i * cell < W + 80; i++) {
+          ctx.fillStyle = (((i + row) % 2) + 2) % 2 ? "#0a0f1c" : "#eef2fb";
+          ctx.fillRect(i * cell, yTop + row * cell, cell, cell);
+        }
+      }
+      ctx.restore();
+      if (S.held) {                       // say so while it is holding you back
+        ctx.strokeStyle = "rgba(63,224,207,.55)";
+        ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(lB, yBot + 1); ctx.lineTo(rB, yBot + 1); ctx.stroke();
+      }
+    }
+
     for (const p of pillarsNear(uMin - 80, uMax + 80, wd)) {
       const y = H - (p.u + p.h - dist);
       ctx.fillStyle = "#27375a";
@@ -2294,6 +2334,14 @@
   // settlement moving even when a background tab stops painting.
   function step(now) {
     const left = msToStart();
+
+    /* the lights are still on, so nobody gets past the grid line: the cursor
+       slides along it instead, the way a car sits on its mark */
+    S.held = false;
+    if (S.phase === "open") {
+      const hold = gridHoldY();
+      if (S.cy < hold) { S.cy = hold; S.held = true; }
+    }
 
     if (S.phase === "open") {
       if (left <= 4000) {
@@ -2646,7 +2694,9 @@
         }
         veil.innerHTML = wrapHTML(lightsHTML(secs) +
           '<p>' + (S.joined
-            ? (TOUCH ? "Drag anywhere on the screen to steer." : "Put your cursor in the channel.")
+            ? (TOUCH
+                ? "Drag anywhere to steer. The grid holds you until the lights go out."
+                : "Put your cursor in the channel, behind the grid line.")
             : "Watching this one.") + '</p>');
         return;
       }
