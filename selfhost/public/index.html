@@ -245,29 +245,9 @@
   #musicBtn .slash { opacity: 0; }
   #musicBtn.off { color: var(--faint); }
   #musicBtn.off .slash { opacity: 1; }
-  /* touch control: a thumb stick on the right, where a right hand falls */
-  #stick {
-    position: fixed;
-    right: max(18px, env(safe-area-inset-right, 0px));
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 74;
-    width: 128px; height: 128px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--field) 70%, transparent);
-    box-shadow: inset 0 0 0 2px var(--wall-line);
-    touch-action: none;
-    display: grid;
-    place-items: center;
-  }
-  #knob {
-    width: 54px; height: 54px;
-    border-radius: 50%;
-    background: color-mix(in srgb, var(--aqua) 26%, var(--wall));
-    box-shadow: inset 0 0 0 2px var(--aqua);
-    transition: transform .05s linear;
-    pointer-events: none;
-  }
+  /* a race takes the whole gesture: no scrolling or pull-to-refresh under it */
+  body.focus { touch-action: none; overscroll-behavior: none; }
+
   /* the lobby demo fills the window, so the wall pattern runs to every edge
      instead of leaving the page background showing beside a boxed stage */
   body.lobby .rail { display: none; }
@@ -888,8 +868,6 @@
   <input id="musicVol" type="range" min="0" max="100" value="32" aria-label="Music volume">
 </div>
 
-<div id="stick" hidden><div id="knob"></div></div>
-
 <canvas id="fx"></canvas>
 
 <script>
@@ -1468,6 +1446,7 @@
   new ResizeObserver(fit).observe(stage);
 
   stage.addEventListener("pointermove", e => {
+    if (TOUCH && e.pointerType === "touch") return;   // a finger drags, it does not point
     const r = stage.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     S.cx = ((e.clientX - r.left) * dpr - offX) / scale;
@@ -1475,34 +1454,37 @@
     S.inside = true;
   });
   stage.addEventListener("pointerleave", () => {
-    if (stickVec) return;              // the thumb stick is driving, not the pointer
+    if (TOUCH) return;                 // a finger has no "outside" to wander into
     S.inside = false;
     if (S.phase === "racing") die("left the channel");
   });
 
-  /* ---------- touch: a thumb stick instead of a pointer ---------- */
+  /* ---------- touch: drag anywhere, and the cursor moves with you ----------
+     Relative, not absolute: the cursor shifts by however far the finger moved,
+     so lifting it and putting it down elsewhere leaves the cursor where it was
+     instead of teleporting it under your thumb. The finger can also be nowhere
+     near the cursor, which keeps it out of its own way. */
   const TOUCH = matchMedia("(pointer: coarse)").matches;
-  let stickVec = null, lastStepAt = 0;
-  const stickEl = $("stick"), knobEl = $("knob");
-  function stickAt(e) {
-    const r = stickEl.getBoundingClientRect();
-    const dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
-    const dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
-    const m = Math.hypot(dx, dy) || 1;
-    const k = Math.min(1, m);
-    stickVec = { x: (dx / m) * k, y: (dy / m) * k };
-    knobEl.style.transform = "translate(" + (stickVec.x * 33).toFixed(1) + "px," +
-      (stickVec.y * 33).toFixed(1) + "px)";
-  }
-  stickEl.addEventListener("pointerdown", e => {
-    stickEl.setPointerCapture(e.pointerId);
+  let touchAnchor = null, lastStepAt = 0;
+  if (TOUCH) {
     S.inside = true;
-    stickAt(e);
-    e.preventDefault();
-  });
-  stickEl.addEventListener("pointermove", e => { if (stickVec) stickAt(e); });
-  ["pointerup", "pointercancel"].forEach(ev =>
-    stickEl.addEventListener(ev, () => { stickVec = null; knobEl.style.transform = ""; }));
+    addEventListener("pointerdown", e => {
+      if (e.pointerType !== "touch") return;
+      touchAnchor = { x: e.clientX, y: e.clientY };
+    }, { passive: true });
+    addEventListener("pointermove", e => {
+      if (e.pointerType !== "touch" || !touchAnchor) return;
+      const f = dprOf() / (scale || 1);          // screen pixels to channel units
+      S.cx = Math.max(R, Math.min(W - R, S.cx + (e.clientX - touchAnchor.x) * f));
+      S.cy = Math.max(R, Math.min(H - R, S.cy + (e.clientY - touchAnchor.y) * f));
+      touchAnchor = { x: e.clientX, y: e.clientY };
+      S.inside = true;
+    }, { passive: true });
+    ["pointerup", "pointercancel"].forEach(ev =>
+      addEventListener(ev, e => {
+        if (e.pointerType === "touch") touchAnchor = null;
+      }, { passive: true }));
+  }
   stage.addEventListener("pointerdown", e => e.preventDefault());
 
   /* ---------- focus mode ---------- */
@@ -1526,6 +1508,15 @@
   document.addEventListener("fullscreenchange", () => requestAnimationFrame(fit));
 
   function say(msg) { S.note = msg; S.noteUntil = Date.now() + 4000; paintVeil(); }
+
+  /* On touch the cursor is dragged relative to wherever it already is, so it
+     has to begin somewhere survivable rather than wherever it was left. */
+  function placeCursorForTouch() {
+    if (!TOUCH) return;
+    S.cy = H * 0.66;
+    S.cx = centerX(H - S.cy, S.world);
+    S.inside = true;
+  }
 
   /* ---------- tables ---------- */
   /* everyone on the site, counted as people rather than open tabs */
@@ -1631,6 +1622,7 @@
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
     S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false;
     ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
     $("gemLine").hidden = true;
     exitFocus();
@@ -1696,6 +1688,7 @@
     S.dist = 0; S.trail = []; S.death = null; S.result = null;
     S.runCoins = 0; S.gatesPassed = 0; S.newUnlocks = []; S.entrants = 1;
     ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
     $("gemLine").hidden = true;
     document.body.classList.remove("hideveil");
@@ -2297,15 +2290,7 @@
       if (ref) ref.set({ rid: "", startsAt: 0, serverNow: Date.now(), host: "" }).catch(() => {});
     }
 
-    const dt = lastStepAt ? Math.min(0.05, (now - lastStepAt) / 1000) : 0;
     lastStepAt = now;
-    if (stickVec && (S.phase === "racing" || S.phase === "open")) {
-      S.cx = Math.max(0, Math.min(W, S.cx + stickVec.x * 640 * dt));
-      S.cy = Math.max(0, Math.min(H, S.cy + stickVec.y * 640 * dt));
-      S.inside = true;
-    }
-    const wantStick = TOUCH && (S.phase === "racing" || (S.phase === "open" && S.joined));
-    if (stickEl.hidden === wantStick) stickEl.hidden = !wantStick;
     // the pilot page needs the rail, so it is not "lobby" even when idle
     document.body.classList.toggle("lobby",
       demoMode() && !document.body.classList.contains("settings"));
@@ -2386,7 +2371,7 @@
   function zoomInit() {
     if (ZOOM.length) return;
     const tails = TAILS.filter(t => t.color);
-    for (let i = 0; i < 7; i++) {
+    for (let i = 0; i < 5; i++) {
       const a = Math.random() * TAU, sp = 330 + Math.random() * 430;
       ZOOM.push({
         x: Math.random() * window.innerWidth,
