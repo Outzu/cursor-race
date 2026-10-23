@@ -1,0 +1,19 @@
+# Caddy gets a certificate for this name automatically and renews it.
+# setup.sh replaces example.com with your domain.
+example.com {
+	encode zstd gzip
+
+	# WebSocket upgrades pass through untouched — Caddy 2 needs no special case.
+	# X-Forwarded-Proto is what lets the server build the right Google redirect URI
+	# (PUBLIC_URL in /etc/cursor-race.env overrides it if you prefer).
+	reverse_proxy 127.0.0.1:8080 {
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	log {
+		output file /var/log/caddy/cursor-race.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

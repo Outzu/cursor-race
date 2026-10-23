@@ -1,0 +1,42 @@
+[Unit]
+Description=Cursor Race
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cursorrace
+Group=cursorrace
+WorkingDirectory=/opt/cursor-race/selfhost
+ExecStart=/usr/bin/node server/index.js
+EnvironmentFile=/etc/cursor-race.env
+Restart=always
+RestartSec=2
+
+# the store and the session secret live here; nothing else needs to be writable
+StateDirectory=cursor-race
+Environment=DATA_FILE=/var/lib/cursor-race/store.json
+ReadWritePaths=/var/lib/cursor-race
+
+# plenty of headroom for sockets, and a ceiling so a leak cannot take the box down
+LimitNOFILE=65535
+MemoryMax=512M
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=cursor-race
+
+[Install]
+WantedBy=multi-user.target

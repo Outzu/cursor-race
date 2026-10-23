@@ -1,0 +1,14 @@
+{
+  "name": "cursor-race-selfhost",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Cursor Race on your own domain: static game plus a presence, document and identity server.",
+  "main": "server/index.js",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "build": "node build.js",
+    "start": "node build.js && node server/index.js",
+    "serve": "node server/index.js"
+  },
+  "dependencies": {}
+}

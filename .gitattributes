@@ -1,0 +1,4 @@
+# The server and the deploy scripts run on Linux, so everything is stored and
+# checked out with LF. Without this, a Windows checkout gives the shell scripts
+# CRLF endings and the droplet answers with: $'\r': command not found
+* text=auto eol=lf

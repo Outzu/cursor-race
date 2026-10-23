@@ -1,0 +1,2272 @@
+<title>Cursor Race</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Antonio:wght@400;600;700&family=Azeret+Mono:wght@400;600&family=Figtree:wght@400;600&display=swap">
+<style>
+  /* Layout: instrument panel — a portrait test channel, a telemetry rail, and a
+     full-screen lobby veil that owns the betting floor between rounds.
+     Deliberately single-theme (a lit arcade cabinet), so every color is set explicitly. */
+  :root {
+    --void: #070b16;
+    --field: #0c1324;
+    --wall: #18233b;
+    --wall-line: #27375a;
+    --ink: #eef2fb;
+    --dim: #8b99bb;
+    --faint: #4d5c80;
+    --aqua: #3fe0cf;
+    --amber: #ffb12e;
+    --hot: #ff5470;
+    --display: "Antonio", "Oswald", "Arial Narrow", sans-serif;
+    --data: "Azeret Mono", ui-monospace, "SFMono-Regular", Consolas, monospace;
+    --body: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif;
+    color-scheme: dark;
+  }
+
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--void);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 14px;
+    overflow: hidden;
+  }
+
+  .app {
+    height: 100%;
+    display: flex;
+    gap: 14px;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 14px;
+    box-sizing: border-box;
+  }
+
+  /* ---- stage ---- */
+  .stagewrap {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+  .stage {
+    position: relative;
+    height: 100%;
+    aspect-ratio: 4 / 5;
+    max-width: 100%;
+    border: 1px solid var(--wall-line);
+    border-radius: 4px;
+    background: var(--field);
+    overflow: hidden;
+    touch-action: none;
+  }
+  body.focus .stage { cursor: none; }
+  .stage canvas { display: block; width: 100%; height: 100%; }
+
+  .corner {
+    position: absolute;
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--faint);
+    pointer-events: none;
+  }
+  .corner.tl { top: 10px; left: 12px; }
+  .corner.tr { top: 10px; right: 12px; text-align: right; }
+
+  .readout {
+    position: absolute;
+    top: 26px;
+    left: 12px;
+    pointer-events: none;
+    font-family: var(--display);
+    line-height: .86;
+  }
+  .readout .big {
+    font-size: clamp(34px, 7vh, 64px);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+  }
+  .readout .unit {
+    margin-top: 8px;
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .2em;
+    color: var(--dim);
+  }
+  .coinline {
+    margin-top: 10px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .1em;
+    color: var(--dim);
+  }
+  .coinline b { color: var(--amber); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .pip {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--amber) 28%, transparent);
+  }
+  .coinline.ping b { color: #fff; }
+  .coinline.ping .pip { transform: scale(1.45); }
+  .pip, .coinline b { transition: transform .12s ease, color .12s ease; }
+
+  /* focus mode: the canvas takes the whole window while you are racing.
+     The playfield stays a fixed 800x1000 for everyone; the extra screen around
+     it is drawn as more wall, so nobody gets a bigger view of the channel. */
+  body.focus { overflow: hidden; }
+  body.focus .rail { display: none; }
+  body.focus .app { padding: 0; gap: 0; height: 100%; }
+  body.focus .stagewrap { width: 100%; height: 100%; min-height: 0; }
+  body.focus .stage {
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    aspect-ratio: auto;
+    border: 0;
+    border-radius: 0;
+  }
+  body.focus .corner.tl { left: max(12px, env(safe-area-inset-left, 0px)); }
+  body.focus .corner.tr { right: max(12px, env(safe-area-inset-right, 0px)); }
+  body.focus .readout { left: max(12px, env(safe-area-inset-left, 0px)); }
+  body.focus .live { right: max(12px, env(safe-area-inset-right, 0px)); }
+  .live {
+    position: absolute;
+    top: 30px; right: 12px;
+    display: none;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+    pointer-events: none;
+    font-family: var(--data);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  body.focus .live { display: flex; }
+  .live .lrow { display: flex; align-items: center; gap: 6px; opacity: .9; }
+  .live .lrow.gone { opacity: .35; }
+  .live .lrow i { width: 7px; height: 7px; border-radius: 50%; font-style: normal; }
+  .live .lrow em { font-style: normal; color: var(--dim); }
+  .live .lrow b { color: var(--ink); font-weight: 600; }
+
+  /* ---- full-screen veil ---- */
+  .veil {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    background: color-mix(in srgb, var(--void) 88%, transparent);
+    backdrop-filter: blur(3px);
+    padding: 24px max(20px, env(safe-area-inset-right, 0px)) 24px max(20px, env(safe-area-inset-left, 0px));
+    box-sizing: border-box;
+    overflow-y: auto;
+  }
+  .veil.thin {
+    background: color-mix(in srgb, var(--void) 24%, transparent);
+    backdrop-filter: none;
+    pointer-events: none;
+  }
+  body.hideveil .veil { display: none; }
+
+  /* the tail follows the pointer across the whole interface, not just the race */
+  #fx { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+  body.focus #fx { display: none; }
+
+  /* the pilot page: wallet, pilot and gear only, no playfield */
+  body.settings .veil,
+  body.settings .stagewrap,
+  body.settings #betCard,
+  body.settings .scroller { display: none; }
+  body.settings .app { justify-content: center; }
+  body.settings .rail {
+    width: min(720px, 100%);
+    flex: 0 1 auto;
+    margin: 0 auto;
+  }
+  body.settings .skins { grid-template-columns: repeat(6, 1fr); }
+  body.settings .purse b { font-size: 34px; }
+  .wrap {
+    width: min(1000px, 94vw);
+    display: grid;
+    justify-items: center;
+    gap: 16px;
+    text-align: center;
+  }
+  .veil h1 {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: clamp(42px, 10vh, 92px);
+    letter-spacing: .01em;
+    margin: 0;
+    text-wrap: balance;
+    line-height: .88;
+  }
+  .veil h1 .race { color: var(--aqua); }
+  .veil p {
+    margin: 0;
+    max-width: 68ch;
+    color: var(--dim);
+    line-height: 1.55;
+  }
+  .veil .count {
+    font-family: var(--display);
+    font-size: clamp(76px, 22vh, 190px);
+    font-weight: 700;
+    color: var(--amber);
+    line-height: .9;
+    font-variant-numeric: tabular-nums;
+  }
+  .veil .verdict {
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .22em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .rules {
+    display: grid;
+    gap: 7px;
+    font-family: var(--data);
+    font-size: 12px;
+    color: var(--dim);
+    text-align: left;
+    line-height: 1.5;
+    max-width: 74ch;
+  }
+  .rules b { color: var(--ink); font-weight: 600; }
+  .unlocked-note {
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--amber);
+  }
+  .btnrow { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .note {
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .08em;
+    color: var(--hot);
+    min-height: 14px;
+  }
+
+  /* the pilot's chosen cursor is set on <html>, so controls inherit it */
+  button, input[type="text"], .betrow, .stake, .sw, .skin { cursor: inherit; }
+  button {
+    font: inherit;
+    border: 0;
+    border-radius: 3px;
+  }
+  button:focus-visible { outline: 2px solid var(--aqua); outline-offset: 2px; }
+  .go {
+    font-family: var(--display);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--void);
+    background: var(--amber);
+    padding: 11px 22px;
+  }
+  .go:hover { background: #ffc15c; }
+  .go:disabled { background: var(--wall); color: var(--faint); cursor: default; }
+  .go.ghost {
+    background: transparent;
+    color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--wall-line);
+  }
+  .go.ghost:hover { background: color-mix(in srgb, var(--wall) 60%, transparent); }
+  .go.wide { width: 100%; }
+  .go.sm { font-size: 15px; padding: 7px 12px; }
+
+  /* entrants strip on the lobby veil */
+  .entrants {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 94vw;
+  }
+  .ent {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px 7px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--wall) 60%, transparent);
+    box-shadow: inset 0 0 0 1px var(--wall-line);
+    font-family: var(--data);
+    font-size: 12px;
+  }
+  .ent.me { box-shadow: inset 0 0 0 1px var(--aqua); }
+  .ent i { width: 11px; height: 11px; border-radius: 50%; font-style: normal; }
+  .ent em { font-style: normal; color: var(--dim); font-size: 10px; letter-spacing: .1em; }
+
+  /* table picker */
+  .tables {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    width: min(760px, 94vw);
+  }
+  .tcard {
+    display: grid;
+    gap: 6px;
+    justify-items: center;
+    padding: 14px 10px 12px;
+    background: color-mix(in srgb, var(--wall) 55%, transparent);
+    box-shadow: inset 0 0 0 1px var(--wall-line);
+    border-radius: 4px;
+    color: var(--ink);
+  }
+  .tcard:hover:not(:disabled) { box-shadow: inset 0 0 0 1px var(--aqua); }
+  .tcard.full { opacity: .4; }
+  .tcard .tname {
+    font-family: var(--display);
+    font-size: 21px;
+    font-weight: 700;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+  }
+  .tcard .tnum {
+    font-family: var(--display);
+    font-size: 30px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--aqua);
+    font-variant-numeric: tabular-nums;
+  }
+  .tcard .tnum em { font-style: normal; font-size: 14px; color: var(--faint); }
+  .tcard .tstate {
+    font-family: var(--data);
+    font-size: 9px;
+    letter-spacing: .18em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .tcard .tstate.racing { color: var(--amber); }
+  .tcard .tstate.waiting { color: var(--aqua); }
+
+  .stat {
+    display: flex;
+    gap: 22px;
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  .stat b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stat .cr { color: var(--aqua); }
+  .stat .co { color: var(--amber); }
+
+  /* ---- rail ---- */
+  .rail {
+    width: 304px;
+    flex: 0 0 304px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .card {
+    background: var(--field);
+    border: 1px solid var(--wall-line);
+    border-radius: 4px;
+    padding: 12px;
+  }
+  .card h2 {
+    margin: 0 0 10px;
+    font-family: var(--data);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--faint);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .brand {
+    font-family: var(--display);
+    font-weight: 700;
+    font-size: 30px;
+    line-height: .9;
+    letter-spacing: .01em;
+  }
+  .brand span { color: var(--aqua); }
+  .tagline {
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--faint);
+    margin-top: 5px;
+  }
+  .link {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .dot.on { background: var(--aqua); box-shadow: 0 0 8px var(--aqua); }
+
+  .purse { display: flex; gap: 10px; }
+  .purse div {
+    flex: 1;
+    background: color-mix(in srgb, var(--wall) 55%, transparent);
+    border-radius: 3px;
+    padding: 9px 10px;
+  }
+  .purse b {
+    display: block;
+    font-family: var(--display);
+    font-size: 26px;
+    font-weight: 700;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .purse .cr b { color: var(--aqua); }
+  .purse .co b { color: var(--amber); }
+  .purse em {
+    font-style: normal;
+    font-family: var(--data);
+    font-size: 9px;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+
+  input[type="text"] {
+    flex: 1;
+    min-width: 0;
+    background: var(--void);
+    border: 1px solid var(--wall-line);
+    border-radius: 3px;
+    color: var(--ink);
+    font-family: var(--data);
+    font-size: 12px;
+    padding: 8px 9px;
+  }
+  input[type="text"]:focus-visible { outline: 2px solid var(--aqua); outline-offset: 1px; }
+  .field-row { display: flex; gap: 8px; align-items: center; }
+
+  .swatches { display: flex; gap: 6px; margin-top: 9px; flex-wrap: wrap; }
+  .sw {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    padding: 0;
+    background-clip: padding-box;
+  }
+  .sw[aria-pressed="true"] { border-color: var(--ink); }
+
+  .skins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  .skin {
+    display: grid;
+    justify-items: center;
+    gap: 3px;
+    padding: 5px 2px 6px;
+    background: color-mix(in srgb, var(--wall) 55%, transparent);
+    border: 1px solid transparent;
+    border-radius: 3px;
+  }
+  .skin[aria-pressed="true"] { border-color: var(--aqua); background: color-mix(in srgb, var(--aqua) 12%, transparent); }
+  .skin.locked { opacity: .4; cursor: default; }
+  .skin canvas { display: block; width: 34px; height: 34px; }
+  .skin .lbl {
+    font-family: var(--data);
+    font-size: 8px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--dim);
+  }
+  .skin.locked .lbl { color: var(--faint); }
+
+  .grid-list { display: grid; gap: 6px; align-content: start; overflow-y: auto; min-height: 0; }
+  .row {
+    display: grid;
+    grid-template-columns: 10px 1fr auto;
+    gap: 9px;
+    align-items: center;
+    padding: 6px 7px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--wall) 55%, transparent);
+    font-size: 13px;
+  }
+  .row.me { background: color-mix(in srgb, var(--aqua) 14%, transparent); }
+  .row.out { opacity: .45; }
+  .row .chip { width: 10px; height: 10px; border-radius: 50%; }
+  .row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row .val {
+    font-family: var(--data);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: var(--dim);
+  }
+  .row .val b { color: var(--ink); font-weight: 600; }
+  .empty { font-family: var(--data); font-size: 11px; color: var(--faint); line-height: 1.6; }
+  .scroller { display: flex; flex-direction: column; }
+  .scroller .grid-list { max-height: 208px; }
+
+  .betrow {
+    display: grid;
+    grid-template-columns: 10px 1fr auto;
+    gap: 9px;
+    align-items: center;
+    width: 100%;
+    padding: 7px;
+    border-radius: 3px;
+    background: color-mix(in srgb, var(--wall) 55%, transparent);
+    color: var(--ink);
+    font-size: 13px;
+    text-align: left;
+  }
+  .betrow:hover:not(:disabled) { background: color-mix(in srgb, var(--aqua) 16%, transparent); }
+  .betrow:disabled { opacity: .4; cursor: default; }
+  .betrow .odds { font-family: var(--data); font-size: 11px; color: var(--aqua); }
+  .stakes { display: flex; gap: 6px; margin-bottom: 9px; }
+  .stake {
+    flex: 1;
+    padding: 6px;
+    background: color-mix(in srgb, var(--wall) 55%, transparent);
+    color: var(--dim);
+    font-family: var(--data);
+    font-size: 12px;
+  }
+  .stake[aria-pressed="true"] { background: var(--aqua); color: var(--void); font-weight: 600; }
+  .hint {
+    font-family: var(--data);
+    font-size: 10px;
+    letter-spacing: .1em;
+    color: var(--faint);
+    text-align: center;
+    margin-top: 7px;
+  }
+
+  @media (max-width: 860px), (max-height: 560px) {
+    body { overflow: auto; }
+    .app { flex-direction: column; height: auto; min-height: 100%; }
+    .rail { width: auto; flex: none; overflow: visible; }
+    .stagewrap { min-height: 60vh; }
+    .stage { height: auto; width: 100%; max-width: min(100%, 60vh); }
+    .veil h1 { font-size: clamp(36px, 8vh, 60px); }
+  }
+</style>
+
+<div class="app">
+  <div class="stagewrap">
+    <div class="stage" id="stage">
+      <canvas id="cv"></canvas>
+      <div class="corner tl">channel 01 / drift test</div>
+      <div class="corner tr" id="speedTag">hold / 000 u/s</div>
+      <div class="live" id="live"></div>
+      <div class="readout" id="readout" hidden>
+        <div class="big" id="distBig">0</div>
+        <div class="unit">metres clear</div>
+        <div class="coinline" id="coinLine"><span class="pip"></span><b id="coinNow">0</b><span id="coinWord">coins</span></div>
+      </div>
+    </div>
+  </div>
+
+  <aside class="rail">
+    <div class="card">
+      <div class="brand">CURSOR <span>RACE</span></div>
+      <div class="tagline" id="tagline">last pointer standing</div>
+      <div class="link" style="margin-top:10px"><span class="dot" id="netDot"></span><span id="netText">solo channel</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Wallet</h2>
+      <div class="purse">
+        <div class="cr"><b id="crNum">100</b><em>credits</em></div>
+        <div class="co"><b id="coNum">0</b><em>coins</em></div>
+      </div>
+      <button class="go ghost sm wide" id="toLobby" style="margin-top:10px">Back to lobby</button>
+    </div>
+
+    <div class="card" id="betCard" hidden>
+      <h2><span>Bet on a pilot</span><span id="betState"></span></h2>
+      <div class="stakes" id="stakes"></div>
+      <div class="grid-list" id="betList"></div>
+      <div class="hint" id="betHint">pays stake x entrants if they win</div>
+    </div>
+
+    <div class="card">
+      <h2>Pilot</h2>
+      <div class="field-row">
+        <input type="text" id="nameInput" maxlength="14" placeholder="your handle" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="swatches" id="swatches"></div>
+    </div>
+
+    <div class="card">
+      <h2><span>Cursor</span><span id="coinTotal">0 coins</span></h2>
+      <div class="skins" id="skins"></div>
+      <div class="hint" id="skinHint">one coin per gate you clear</div>
+    </div>
+
+    <div class="card">
+      <h2><span>Tail</span><span>mix with any cursor</span></h2>
+      <div class="skins" id="tails"></div>
+      <div class="hint" id="tailHint">tails leave marks in the channel</div>
+    </div>
+
+    <div class="card scroller">
+      <h2><span id="boardTitle">On the channel</span><span id="boardCount"></span></h2>
+      <div class="grid-list" id="board"></div>
+    </div>
+  </aside>
+</div>
+
+<div class="veil" id="veil"></div>
+<canvas id="fx"></canvas>
+
+<script>
+(() => {
+  "use strict";
+
+  /* ---------- fixed logical playfield: identical for every player ---------- */
+  const W = 800, H = 1000;
+  const R = 7;
+  const V0 = 150, TA = 22, VMAX = 760;
+  const T_CAP = TA * (VMAX / V0 - 1);
+  const GATE_START = 900, GATE_SPACE = 520, GATE_TH = 20;
+
+  const JOIN_WINDOW = 30000;   // 30 s to confirm a seat
+  const TABLES = ["t1", "t2", "t3", "t4", "t5", "t6"];
+  const TABLE_CAP = 10;
+  const tableName = id => "Table " + (TABLES.indexOf(id) + 1);
+  const ENTRY_FEE = 10;
+  const START_CREDITS = 100;
+  const STAKES = [5, 10, 25];
+  const RESULT_HOLD = 9000;
+
+  const COLORS = ["#3fe0cf", "#ffb12e", "#ff5470", "#9b8cff", "#6ee36a", "#ff8ad4", "#58b4ff", "#ffe66b"];
+  const TAU = 6.283185;
+
+  const distAt = t => {
+    if (t <= 0) return 0;
+    if (t <= T_CAP) return V0 * (t + (t * t) / (2 * TA));
+    const dc = V0 * (T_CAP + (T_CAP * T_CAP) / (2 * TA));
+    return dc + VMAX * (t - T_CAP);
+  };
+  const speedAt = t => Math.min(VMAX, V0 * (1 + Math.max(0, t) / TA));
+
+  /* ---------- deterministic world ---------- */
+  function hashStr(s) {
+    let h = 2166136261 >>> 0;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+  function mulberry32(a) {
+    return function () {
+      a |= 0; a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function makeWorld(seed) {
+    const key = String(seed);
+    const rnd = mulberry32(hashStr(key));
+    const ph = [rnd() * 6.2832, rnd() * 6.2832, rnd() * 6.2832];
+    const per = [350 + rnd() * 130, 180 + rnd() * 65, 96 + rnd() * 32];
+    const gates = [];
+    for (let i = 0; i < 420; i++) gates.push(rnd() * 2 - 1);
+    pillarCache.clear();
+    return { seed: key, ph, per, gates };
+  }
+  const press = u => Math.min(1, Math.max(0, u) / 9000);
+  const baseHalf = u => 150 - 104 * press(u);
+
+  /* every 1000 m the channel opens into a wide plaza — easier walls, but it is
+     filled with pillars, so the breather costs attention instead of nerve */
+  const BREAK_EVERY = 10000, BREAK_LEN = 1400;
+  const breakIndex = u => Math.round(u / BREAK_EVERY);
+  function breakE(u) {
+    const n = breakIndex(u);
+    if (n < 1) return 0;
+    const d = Math.abs(u - n * BREAK_EVERY);
+    if (d > BREAK_LEN / 2) return 0;
+    const t = 1 - d / (BREAK_LEN / 2);
+    return t * t * (3 - 2 * t);
+  }
+  const halfW = u => Math.min(340, baseHalf(u) * (1 + 1.5 * breakE(u)));
+  const gapW = u => (190 - 96 * press(u)) * (halfW(u) / baseHalf(u));
+
+  function centerX(u, wd) {
+    const A = (0.18 + 0.16 * press(u)) * W * (1 - 0.6 * breakE(u));
+    const s = 0.55 * Math.sin(u / wd.per[0] + wd.ph[0])
+            + 0.30 * Math.sin(u / wd.per[1] + wd.ph[1])
+            + 0.15 * Math.sin(u / wd.per[2] + wd.ph[2]);
+    const m = halfW(u) + 12;
+    return Math.max(m, Math.min(W - m, W / 2 + A * s));
+  }
+
+  /* a gate spans GATE_TH of depth and the walls move across it, so it is built
+     from the channel at BOTH ends of its band — that is what keeps the bars
+     flush with the walls instead of overhanging them */
+  function gateAt(k, wd) {
+    const u = GATE_START + GATE_SPACE * k;
+    const a = { c: centerX(u, wd), hw: halfW(u) };
+    const b = { c: centerX(u + GATE_TH, wd), hw: halfW(u + GATE_TH) };
+    const lo = Math.max(a.c - a.hw, b.c - b.hw);
+    const hi = Math.min(a.c + a.hw, b.c + b.hw);
+    const gw = Math.min(gapW(u), Math.max(40, hi - lo - 16));
+    const span = Math.max(0, (hi - lo) / 2 - gw / 2 - 6);
+    const gc = (lo + hi) / 2 + wd.gates[k % wd.gates.length] * span;
+    return { u, gw, gc, a, b };
+  }
+
+  const pillarCache = new Map();
+  function pillarsFor(n, wd) {
+    const key = wd.seed + ":" + n;
+    let list = pillarCache.get(key);
+    if (list) return list;
+    const rnd = mulberry32(hashStr(key));
+    const u0 = n * BREAK_EVERY - BREAK_LEN * 0.34;
+    const u1 = n * BREAK_EVERY + BREAK_LEN * 0.34;
+    const count = 5 + Math.floor(rnd() * 4);
+    list = [];
+    for (let i = 0; i < count; i++) {
+      const u = u0 + (u1 - u0) * ((i + 0.15 + rnd() * 0.7) / count);
+      const h = 26 + rnd() * 30;
+      // the channel at both ends of the pillar's depth, so it never eats a wall
+      const lo = Math.max(centerX(u, wd) - halfW(u), centerX(u + h, wd) - halfW(u + h));
+      const hi = Math.min(centerX(u, wd) + halfW(u), centerX(u + h, wd) + halfW(u + h));
+      const w = Math.max(40, Math.min(50 + rnd() * 90, hi - lo - 150));
+      const room = Math.max(0, (hi - lo) / 2 - w / 2 - 40);
+      list.push({ u, x: (lo + hi) / 2 + (rnd() * 2 - 1) * room, w, h });
+    }
+    if (pillarCache.size > 60) pillarCache.clear();
+    pillarCache.set(key, list);
+    return list;
+  }
+  function pillarsNear(uMin, uMax, wd) {
+    const out = [];
+    const from = Math.max(1, breakIndex(uMin) - 1), to = breakIndex(uMax) + 1;
+    for (let n = from; n <= to; n++) {
+      if (n * BREAK_EVERY + BREAK_LEN < uMin || n * BREAK_EVERY - BREAK_LEN > uMax) continue;
+      for (const p of pillarsFor(n, wd)) if (p.u + p.h > uMin && p.u < uMax) out.push(p);
+    }
+    return out;
+  }
+
+  /* ---------- cursor designs: looks only, the hitbox is always R ---------- */
+  function withA(hex, a) {
+    if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) return "rgba(139,153,187," + a + ")";
+    const n = parseInt(hex.slice(1), 16);
+    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+  }
+  function glowTail(c, pts, colorAt, width) {
+    if (!pts || pts.length < 2) return;
+    const base = c.globalAlpha;
+    c.save();
+    c.lineCap = "round"; c.lineJoin = "round";
+    c.shadowColor = colorAt(1); c.shadowBlur = 16;
+    c.strokeStyle = colorAt(1); c.lineWidth = width * 0.7; c.globalAlpha = base * 0.45;
+    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+    c.stroke();
+    c.shadowBlur = 0;
+    const n = pts.length;
+    for (let i = 1; i < n; i++) {
+      const f = i / (n - 1);
+      c.strokeStyle = colorAt(f);
+      c.lineWidth = width * (0.2 + 0.8 * f);
+      c.globalAlpha = base * (0.12 + 0.88 * f);
+      c.beginPath();
+      c.moveTo(pts[i - 1][0], pts[i - 1][1]);
+      c.lineTo(pts[i][0], pts[i][1]);
+      c.stroke();
+    }
+    c.restore();
+  }
+
+  const SKINS = [
+    { id: "dot", name: "Dot", cost: 0, draw(c, x, y, col) {
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 6.5, 0, TAU); c.fill();
+      c.strokeStyle = withA(col, .45); c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
+    } },
+    { id: "ring", name: "Ring", cost: 12, draw(c, x, y, col) {
+      c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
+    } },
+    { id: "arrow", name: "Arrow", cost: 30, draw(c, x, y, col) {
+      c.save(); c.translate(x, y);
+      c.beginPath();
+      c.moveTo(0, 0); c.lineTo(0, 17); c.lineTo(4.6, 12.8); c.lineTo(7.8, 19.6);
+      c.lineTo(10.6, 18.3); c.lineTo(7.4, 11.6); c.lineTo(13.2, 11.1); c.closePath();
+      c.fillStyle = col; c.fill();
+      c.strokeStyle = "rgba(7,11,22,.7)"; c.lineWidth = 1.4; c.stroke();
+      c.restore();
+    } },
+    { id: "cross", name: "Cross", cost: 60, draw(c, x, y, col) {
+      c.strokeStyle = col; c.lineWidth = 2; c.beginPath();
+      const arms = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+      for (const a of arms) { c.moveTo(x + a[0] * 5, y + a[1] * 5); c.lineTo(x + a[0] * 14, y + a[1] * 14); }
+      c.stroke();
+      c.strokeStyle = withA(col, .45); c.lineWidth = 1.5;
+      c.beginPath(); c.arc(x, y, 9, 0, TAU); c.stroke();
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 2.2, 0, TAU); c.fill();
+    } },
+    { id: "blade", name: "Blade", cost: 100, draw(c, x, y, col, now) {
+      c.save(); c.translate(x, y); c.rotate(now / 260); c.fillStyle = col;
+      for (let i = 0; i < 3; i++) {
+        c.rotate(TAU / 3);
+        c.beginPath(); c.moveTo(0, -3.2); c.lineTo(14, 0); c.lineTo(0, 3.2); c.closePath(); c.fill();
+      }
+      c.restore();
+      c.fillStyle = "#070b16"; c.beginPath(); c.arc(x, y, 3.4, 0, TAU); c.fill();
+      c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); c.arc(x, y, 3.4, 0, TAU); c.stroke();
+    } },
+    { id: "comet", name: "Comet", cost: 160, draw(c, x, y, col, now) {
+      for (let i = 3; i >= 1; i--) {
+        c.fillStyle = withA(col, .15 * i);
+        c.beginPath(); c.arc(x, y + i * 5.5, 6.5 - i * 1.3, 0, TAU); c.fill();
+      }
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 6, 0, TAU); c.fill();
+      c.fillStyle = withA(col, .9);
+      for (let i = 0; i < 2; i++) {
+        const t = now / 300 + i * Math.PI;
+        c.beginPath(); c.arc(x + Math.cos(t) * 12, y + Math.sin(t) * 12, 1.8, 0, TAU); c.fill();
+      }
+    } },
+    { id: "prism", name: "Prism", cost: 240, draw(c, x, y, col, now) {
+      const tri = (r) => {
+        c.beginPath();
+        for (let i = 0; i < 3; i++) {
+          const t = -Math.PI / 2 + i * TAU / 3;
+          const px = Math.cos(t) * r, py = Math.sin(t) * r;
+          if (i) c.lineTo(px, py); else c.moveTo(px, py);
+        }
+        c.closePath();
+      };
+      c.save(); c.translate(x, y);
+      c.save(); c.rotate(now / 700); c.strokeStyle = col; c.lineWidth = 2; tri(13); c.stroke(); c.restore();
+      c.save(); c.rotate(-now / 430); c.fillStyle = col; tri(5.5); c.fill(); c.restore();
+      c.restore();
+    } },
+    { id: "halo", name: "Halo", cost: 360, draw(c, x, y, col, now) {
+      const p = 1 + 0.12 * Math.sin(now / 240);
+      c.strokeStyle = withA(col, .38); c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, 14 * p, 0, TAU); c.stroke();
+      c.strokeStyle = col; c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, 8.5, 0, TAU); c.stroke();
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 2.6, 0, TAU); c.fill();
+      const t = now / 420;
+      c.beginPath(); c.arc(x + Math.cos(t) * 17, y + Math.sin(t) * 17, 2.6, 0, TAU); c.fill();
+    } },
+    { id: "glow", name: "Glow", cost: 420, draw(c, x, y, col) {
+      c.save();
+      c.shadowColor = col; c.shadowBlur = 18;
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill();
+      c.shadowBlur = 0;
+      c.fillStyle = "rgba(255,255,255,.85)";
+      c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
+      c.restore();
+    } },
+    { id: "spectrum", name: "Spectrum", cost: 500, draw(c, x, y, col, now) {
+      const hc = "hsl(" + ((now / 7) % 360) + " 95% 62%)";
+      c.save();
+      c.shadowColor = hc; c.shadowBlur = 20;
+      c.fillStyle = hc; c.beginPath(); c.arc(x, y, 7.5, 0, TAU); c.fill();
+      c.shadowBlur = 0;
+      c.fillStyle = "rgba(255,255,255,.9)";
+      c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
+      c.restore();
+    } },
+    { id: "bullion", name: "Bullion", cost: 600, draw(c, x, y, col, now) {
+      c.save();
+      c.shadowColor = "#ffcf5c"; c.shadowBlur = 22;
+      const g = c.createRadialGradient(x - 2.5, y - 2.5, 0.5, x, y, 8.5);
+      g.addColorStop(0, "#fff8d8"); g.addColorStop(.5, "#ffc33d"); g.addColorStop(1, "#b8780f");
+      c.fillStyle = g; c.beginPath(); c.arc(x, y, 8, 0, TAU); c.fill();
+      c.shadowBlur = 0;
+      for (let i = 0; i < 3; i++) {
+        const t = now / 380 + i * TAU / 3;
+        const r = 13 + 2 * Math.sin(now / 200 + i);
+        c.fillStyle = "rgba(255,243,200," + (0.45 + 0.4 * Math.sin(now / 160 + i)).toFixed(2) + ")";
+        c.beginPath(); c.arc(x + Math.cos(t) * r, y + Math.sin(t) * r, 1.7, 0, TAU); c.fill();
+      }
+      c.restore();
+    } }
+  ];
+  const skinById = id => SKINS.find(s => s.id === id) || SKINS[0];
+
+  /* Tails are picked separately and combine with any head. Each one draws a
+     streak behind the cursor and leaves particles in the channel, which stay
+     where they were dropped and scroll away with the walls. */
+  const TAILS = [
+    { id: "none", name: "None", cost: 0 },
+    { id: "wisp", name: "Wisp", cost: 0, width: 3, plain: true,
+      color: (f, col) => withA(col, .1 + .3 * f) },
+    { id: "flare", name: "Flare", cost: 120, width: 9,
+      color: (f, col) => col,
+      spark: { rate: 26, life: 900, size: 2.2, spread: 34, color: col => col } },
+    { id: "rainbow", name: "Rainbow", cost: 220, width: 10,
+      color: (f, col, now) => "hsl(" + (((1 - f) * 300 + now / 7) % 360) + " 95% 60%)",
+      spark: { rate: 32, life: 1200, size: 2.5, spread: 52,
+               color: (col, now) => "hsl(" + ((now / 3) % 360) + " 95% 65%)" } },
+    { id: "gold", name: "Gold", cost: 340, width: 10,
+      color: f => (f > .62 ? "#ffeeb0" : f > .3 ? "#ffc33d" : "#b8780f"),
+      spark: { rate: 34, life: 1700, size: 2.3, spread: 24, twinkle: true,
+               color: () => "#ffe9a3" } },
+    { id: "sparks", name: "Sparks", cost: 460, width: 7,
+      color: (f, col) => col,
+      spark: { rate: 58, life: 700, size: 2.8, spread: 135, fall: true, color: col => col } },
+    { id: "smoke", name: "Smoke", cost: 600, width: 12,
+      color: (f, col) => withA(col, .2 + .35 * f),
+      spark: { rate: 18, life: 2400, size: 5, spread: 14, grow: true,
+               color: col => withA(col, .4) } }
+  ];
+  const tailById = id => TAILS.find(t => t.id === id) || TAILS[0];
+
+  function drawTail(c, tail, pts, col, now) {
+    if (!tail || !tail.color || !pts || pts.length < 2) return;
+    if (tail.plain) {
+      c.save();
+      c.lineJoin = "round"; c.lineCap = "round";
+      c.strokeStyle = tail.color(1, col, now);
+      c.lineWidth = tail.width;
+      c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
+      c.stroke(); c.restore();
+      return;
+    }
+    glowTail(c, pts, f => tail.color(f, col, now), tail.width);
+  }
+
+  /* particles live in world units (u), so they stay where they were dropped */
+  const PARTS = [];
+  const lastSpark = new Map();
+  function emitParticles(key, tail, col, x, u, now, rateScale) {
+    const sp = tail && tail.spark;
+    if (!sp) return;
+    const gap = 1000 / (sp.rate * (rateScale || 1));
+    const prev = lastSpark.get(key) || 0;
+    if (now - prev < gap) return;
+    const n = Math.min(4, Math.max(1, Math.floor((now - prev) / gap)));
+    lastSpark.set(key, now);
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU;
+      const s = sp.spread * (0.3 + Math.random() * 0.7);
+      PARTS.push({
+        x, u,
+        vx: Math.cos(a) * s,
+        vu: Math.sin(a) * s,
+        born: now,
+        life: sp.life * (0.7 + Math.random() * 0.6),
+        size: sp.size * (0.7 + Math.random() * 0.6),
+        col: sp.color(col, now),
+        grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall
+      });
+    }
+    while (PARTS.length > 420) PARTS.shift();
+  }
+  function drawParticles(c, dist, now) {
+    for (let i = PARTS.length - 1; i >= 0; i--) {
+      const p = PARTS[i];
+      const age = now - p.born;
+      if (age > p.life) { PARTS.splice(i, 1); continue; }
+      const t = age / 1000;
+      const f = 1 - age / p.life;
+      const px = p.x + p.vx * t;
+      const pu = p.u + p.vu * t - (p.fall ? 130 * t * t : 0);
+      const r = p.size * (p.grow ? 1 + 2.4 * (1 - f) : 0.4 + 0.6 * f);
+      c.globalAlpha = 0.9 * f * (p.twinkle ? 0.4 + 0.6 * Math.abs(Math.sin(now / 90 + p.born)) : 1);
+      c.fillStyle = p.col;
+      c.beginPath(); c.arc(px, H - (pu - dist), r, 0, TAU); c.fill();
+    }
+    c.globalAlpha = 1;
+  }
+
+  /* ---------- state ---------- */
+  const S = {
+    phase: "idle",        // idle | open | racing | watching | over
+    practice: false,
+    rid: null,
+    round: null,          // {rid, startsAt (local clock), host}
+    world: makeWorld("demo"),
+    startAt: 0,
+    dist: 0,
+    cx: W / 2, cy: H * 0.66,
+    inside: false,
+    trail: [],
+    death: null,
+    joined: false,
+    bet: null,            // {on, amt}
+    stake: STAKES[1],
+    settled: false,
+    result: null,
+    entrants: 1,
+    newUnlocks: [],
+    name: "",
+    color: COLORS[0],
+    skin: "dot",
+    tail: "wisp",
+    coins: 0,
+    credits: START_CREDITS,
+    runCoins: 0,
+    gatesPassed: 0,
+    wins: 0,
+    peers: [],          // everyone at my table
+    lobbyPeers: [],     // everyone on the site, for the table list
+    table: null,
+    tableRoom: null,
+    roundUnsub: null,
+    room: null,
+    db: null,
+    uid: null,
+    profileRef: null,
+    me: Math.random().toString(36).slice(2, 12),
+    lastPres: 0,
+    note: "",
+    noteUntil: 0,
+    clearAt: 0
+  };
+
+  const $ = id => document.getElementById(id);
+  const stage = $("stage"), cv = $("cv"), ctx = cv.getContext("2d");
+  const veil = $("veil"), readout = $("readout"), distBig = $("distBig");
+  const board = $("board"), nameInput = $("nameInput");
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  /* ---------- canvas fit ---------- */
+  let scale = 1, offX = 0, offY = 0, hatch = null;
+  function buildHatch() {
+    const p = document.createElement("canvas");
+    p.width = p.height = 10;
+    const c = p.getContext("2d");
+    c.fillStyle = "#18233b"; c.fillRect(0, 0, 10, 10);
+    c.strokeStyle = "#1f2c49"; c.lineWidth = 2;
+    c.beginPath(); c.moveTo(-2, 8); c.lineTo(8, -2); c.moveTo(2, 12); c.lineTo(12, 2); c.stroke();
+    hatch = ctx.createPattern(p, "repeat");
+  }
+  function fit() {
+    const r = stage.getBoundingClientRect();
+    if (r.width < 2 || r.height < 2) return;   // hidden, e.g. on the pilot page
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.max(1, Math.round(r.width * dpr));
+    cv.height = Math.max(1, Math.round(r.height * dpr));
+    scale = Math.min(r.width / W, r.height / H) * dpr;
+    offX = (cv.width - W * scale) / 2;
+    offY = (cv.height - H * scale) / 2;
+    buildHatch();
+  }
+  new ResizeObserver(fit).observe(stage);
+
+  stage.addEventListener("pointermove", e => {
+    const r = stage.getBoundingClientRect();
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    S.cx = ((e.clientX - r.left) * dpr - offX) / scale;
+    S.cy = ((e.clientY - r.top) * dpr - offY) / scale;
+    S.inside = true;
+  });
+  stage.addEventListener("pointerleave", () => {
+    S.inside = false;
+    if (S.phase === "racing") die("left the channel");
+  });
+  stage.addEventListener("pointerdown", e => e.preventDefault());
+
+  /* ---------- focus mode ---------- */
+  const ghostTrails = new Map();
+  function enterFocus(fromGesture) {
+    if (document.body.classList.contains("focus")) return;
+    document.body.classList.add("focus");
+    if (fromGesture && !document.fullscreenElement && document.documentElement.requestFullscreen) {
+      try { document.documentElement.requestFullscreen().catch(() => {}); } catch (e) {}
+    }
+    requestAnimationFrame(fit);
+  }
+  function exitFocus() {
+    if (!document.body.classList.contains("focus")) return;
+    document.body.classList.remove("focus");
+    if (document.fullscreenElement && document.exitFullscreen) {
+      try { document.exitFullscreen().catch(() => {}); } catch (e) {}
+    }
+    requestAnimationFrame(fit);
+  }
+  document.addEventListener("fullscreenchange", () => requestAnimationFrame(fit));
+
+  function say(msg) { S.note = msg; S.noteUntil = Date.now() + 4000; paintVeil(); }
+
+  /* ---------- tables ---------- */
+  function tableCounts() {
+    const m = {};
+    for (const t of TABLES) m[t] = { n: 0, busy: false };
+    for (const p of S.lobbyPeers) {
+      const pr = p.presence || {};
+      const slot = m[pr.table];
+      if (!slot) continue;
+      slot.n++;
+      if (pr.busy) slot.busy = true;
+    }
+    return m;
+  }
+
+  async function joinTable(id) {
+    if (S.table === id || !TABLES.includes(id)) return;
+    if (S.phase === "open" || S.phase === "racing") { say("finish this race first"); return; }
+    const counts = tableCounts();
+    if (counts[id] && counts[id].n >= TABLE_CAP) { say(tableName(id) + " is full"); return; }
+    await leaveTable(true);
+    S.table = id;
+    if (S.room && S.room.join) {
+      try {
+        const r = await S.room.join("cursorrace-" + id);
+        S.tableRoom = r;
+        r.onPeers(ch => {
+          S.peers = ch.peers.slice();
+          const me = S.peers.find(p => p.sameTab);
+          if (me && me.peer) S.me = S.uid || me.peer;
+          paintRail();
+          if (S.phase === "idle" || (S.phase === "open" && !withinWarmup())) paintVeil();
+        }, () => { S.peers = []; });
+      } catch (e) {
+        S.table = null;
+        say(e && e.code === "limit_reached" ? "that table is full" : "could not take a seat");
+        paintVeil();
+        return;
+      }
+    }
+    watchRound();
+    pushLobbyPresence();
+    pushPresence(true);
+    paintVeil(); paintRail();
+  }
+
+  async function leaveTable(quiet) {
+    if (!quiet && (S.phase === "open" || S.phase === "racing")) { say("finish this race first"); return; }
+    if (S.roundUnsub) { try { S.roundUnsub(); } catch (e) {} S.roundUnsub = null; }
+    if (S.tableRoom) { try { await S.tableRoom.leave(); } catch (e) {} }
+    S.tableRoom = null;
+    S.peers = [];
+    S.table = null;
+    S.round = null; S.rid = null; S.joined = false; S.bet = null;
+    S.phase = "idle"; S.result = null; S.death = null; S.dist = 0;
+    exitFocus();
+    pushLobbyPresence();
+    if (!quiet) { paintVeil(); paintRail(); }
+  }
+
+  /* ---------- the shared race schedule, one per table ---------- */
+  /* document paths take an even number of segments, so the table id is the
+     document id: live/t1, not tables/t1/round */
+  function roundRef() { return S.db && S.table ? S.db.doc("live/" + S.table) : null; }
+
+  function watchRound() {
+    if (S.roundUnsub) { try { S.roundUnsub(); } catch (e) {} S.roundUnsub = null; }
+    const ref = roundRef();
+    if (!ref) return;
+    S.roundUnsub = ref.onSnapshot(snap => applyRound(snap.exists ? snap.data() : null), () => {});
+  }
+
+  function applyRound(d) {
+    const rid = d && typeof d.rid === "string" ? d.rid : "";
+    if (!rid) {
+      if (S.round) { S.round = null; backToIdle(); }
+      return;
+    }
+    if (S.round && S.round.rid === rid) return;
+    if (S.practice) return;                       // finish the practice run first
+    const skew = Date.now() - (Number(d.serverNow) || Date.now());
+    S.round = { rid, startsAt: (Number(d.startsAt) || 0) + skew, host: String(d.host || "") };
+    S.rid = rid;
+    S.world = makeWorld(rid);
+    S.phase = "open";
+    S.joined = false; S.bet = null; S.settled = false; S.result = null;
+    S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
+    S.newUnlocks = []; S.entrants = 0; S.clearAt = 0;
+    ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    exitFocus();
+    document.body.classList.remove("hideveil");
+    document.body.classList.remove("settings");
+    pushPresence(true);
+    paintVeil(); paintRail();
+  }
+
+  function backToIdle() {
+    S.phase = "idle"; S.rid = null; S.joined = false; S.bet = null;
+    S.death = null; S.result = null; S.dist = 0; S.practice = false;
+    exitFocus();
+    pushPresence(true);
+    paintVeil(); paintRail();
+  }
+
+  async function openRace() {
+    if (!S.db || !S.table) { practiceRun(); return; }
+    if (S.phase !== "idle" && S.phase !== "over") return;
+    if (S.credits < ENTRY_FEE) { say("you need " + ENTRY_FEE + " credits to open a race"); return; }
+    try {
+      const lock = S.db.doc("locks/" + S.table);
+      const got = await lock.acquire({ holder: S.me, ttlMs: 8000 });
+      if (!got.acquired) { say("someone else is opening a race"); return; }
+      const rid = Math.random().toString(36).slice(2, 10);
+      const now = Date.now();
+      await roundRef().set({ rid, startsAt: now + JOIN_WINDOW, serverNow: now, host: S.me });
+      applyRound({ rid, startsAt: now + JOIN_WINDOW, serverNow: now, host: S.me });
+      joinRace();
+    } catch (e) { say("could not open a race"); }
+  }
+
+  function joinRace() {
+    if (S.phase !== "open" || S.joined) return;
+    if (Date.now() > S.round.startsAt - 300) { say("the gate has closed"); return; }
+    if (S.credits < ENTRY_FEE) { say("not enough credits for the " + ENTRY_FEE + " entry"); return; }
+    S.credits -= ENTRY_FEE;
+    S.joined = true;
+    S.bet = null;
+    saveProfile(); pushPresence(true); paintVeil(); paintRail();
+  }
+
+  function practiceRun() {
+    if (S.phase === "racing" || S.phase === "watching") return;
+    const rid = "p" + Math.random().toString(36).slice(2, 9);
+    S.practice = true; S.joined = true; S.round = null; S.bet = null; S.settled = true;
+    S.rid = rid; S.world = makeWorld(rid);
+    S.startAt = performance.now() + 3400;
+    S.phase = "open";
+    S.dist = 0; S.trail = []; S.death = null; S.result = null;
+    S.runCoins = 0; S.gatesPassed = 0; S.newUnlocks = []; S.entrants = 1;
+    ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
+    document.body.classList.remove("hideveil");
+    $("coinNow").textContent = "0";
+    enterFocus(true);
+    paintVeil(); paintRail();
+  }
+
+  /* ---------- field, from live presence ---------- */
+  function roundField() {
+    if (S.practice) {
+      return [{ peer: S.me, isMe: true, name: S.name || "pilot", color: S.color, skin: S.skin,
+                dist: S.death ? S.death.dist : S.dist, racing: S.phase === "racing",
+                pending: S.phase === "open", joined: true }];
+    }
+    return S.peers
+      .filter(p => p.presence && p.presence.rid === S.rid && p.presence.joined === true)
+      .map(p => ({
+        peer: p.peer,
+        isMe: p.sameTab,
+        name: String(p.presence.who || "pilot").slice(0, 14),
+        color: typeof p.presence.color === "string" ? p.presence.color : "#8b99bb",
+        skin: p.presence.skin,
+        dist: Number(p.presence.dist) || 0,
+        racing: p.presence.state === "racing",
+        pending: p.presence.state === "ready",
+        joined: true
+      }));
+  }
+  function watcherBets() {
+    return S.peers
+      .filter(p => p.presence && p.presence.rid === S.rid && p.presence.bet && p.presence.bet.on)
+      .map(p => ({
+        isMe: p.sameTab,
+        name: String(p.presence.who || "watcher").slice(0, 14),
+        on: String(p.presence.bet.on),
+        amt: Math.max(0, Number(p.presence.bet.amt) || 0)
+      }));
+  }
+
+  /* ---------- betting ---------- */
+  function placeBet(peerId) {
+    if (S.joined || S.bet) return;
+    if (S.phase !== "open" && S.phase !== "watching") return;
+    const amt = S.stake;
+    if (S.credits < amt) { say("not enough credits for a " + amt + " credit bet"); return; }
+    const target = roundField().find(p => p.peer === peerId);
+    if (!target || (!target.racing && !target.pending)) { say("that pilot is already out"); return; }
+    S.credits -= amt;
+    S.bet = { on: peerId, amt };
+    saveProfile(); pushPresence(true); paintRail(); paintVeil();
+  }
+
+  /* ---------- round resolution ---------- */
+  function resolveRound() {
+    if (S.settled) return;
+    const field = roundField();
+    if (!field.length) return;
+    const alive = field.filter(p => p.racing);
+    const pending = field.filter(p => p.pending);
+    if (pending.length) return;
+    const over = alive.length === 0 || (field.length >= 2 && alive.length === 1);
+    if (!over) return;
+
+    const winner = alive.length === 1
+      ? alive[0]
+      : field.slice().sort((a, b) => b.dist - a.dist)[0];
+    const n = field.length;
+    const pot = S.practice ? 0 : n * ENTRY_FEE;
+    let gain = 0, betWon = 0;
+    if (!S.practice && S.joined && winner && winner.isMe) { gain = pot; S.wins += 1; }
+    if (!S.practice && S.bet && winner && S.bet.on === winner.peer) betWon = S.bet.amt * n;
+    S.credits += gain + betWon;
+    S.settled = true;
+    S.phase = "over";
+    // the winner is whoever is still flying, so they are ahead even if their
+    // distance has not passed the wrecks yet
+    const me = field.find(p => p.isMe);
+    const myDist = me ? me.dist : 0;
+    const ahead = field.filter(p => !p.isMe &&
+      (p.peer === (winner && winner.peer) || p.dist > myDist)).length;
+    S.result = {
+      winner: winner ? winner.name : "nobody",
+      iWon: !!(winner && winner.isMe && S.joined && !S.practice),
+      rank: winner && winner.isMe ? 1 : ahead + 1,
+      of: n, pot, gain, betWon,
+      best: winner ? winner.dist : 0
+    };
+    exitFocus();
+    document.body.classList.remove("hideveil");
+    saveProfile();
+    pushPresence(true);
+    paintVeil(); paintRail(); paintSkins();
+    if (!S.practice && S.round && S.round.host === S.me) S.clearAt = Date.now() + RESULT_HOLD;
+  }
+
+  function die(why) {
+    if (S.phase !== "racing") return;
+    S.phase = "over";
+    S.death = { dist: S.dist, why };
+    exitFocus();
+    document.body.classList.remove("hideveil");
+    pushPresence(true);
+    saveProfile();
+    paintVeil(); paintRail(); paintSkins();
+  }
+
+  /* ---------- collision ---------- */
+  function hitTest(cx, cy, dist, wd) {
+    if (!S.inside) return "left the channel";
+    if (cx < R || cx > W - R || cy < R || cy > H - R) return "left the channel";
+    const u = dist + H - cy;
+    const hw = halfW(u), c = centerX(u, wd);
+    if (Math.abs(cx - c) > hw - R) return "clipped the wall";
+    const k0 = Math.round((u - GATE_START) / GATE_SPACE);
+    for (let k = k0 - 1; k <= k0 + 1; k++) {
+      if (k < 0) continue;
+      const g = gateAt(k, wd);
+      if (u > g.u - R && u < g.u + GATE_TH + R) {
+        if (Math.abs(cx - g.gc) > g.gw / 2 - R) return "missed the gate";
+      }
+    }
+    if (breakE(u) > 0) {
+      for (const p of pillarsNear(u - 80, u + 80, wd)) {
+        if (u > p.u - R && u < p.u + p.h + R && Math.abs(cx - p.x) < p.w / 2 + R) {
+          return "clipped a pillar";
+        }
+      }
+    }
+    return null;
+  }
+
+  /* ---------- coins ---------- */
+  let pingUntil = 0;
+  function awardGates(u) {
+    const cleared = Math.max(0, Math.floor((u - GATE_START - GATE_TH) / GATE_SPACE) + 1);
+    if (cleared <= S.gatesPassed) return;
+    const before = S.coins;
+    const gained = cleared - S.gatesPassed;
+    S.gatesPassed = cleared;
+    S.runCoins += gained;
+    S.coins += gained;
+    for (const s of SKINS) if (s.cost > before && s.cost <= S.coins) S.newUnlocks.push(s.name);
+    for (const t of TAILS) if (t.cost > before && t.cost <= S.coins) S.newUnlocks.push(t.name + " tail");
+    $("coinNow").textContent = String(S.runCoins);
+    $("coinWord").textContent = S.runCoins === 1 ? "coin" : "coins";
+    pingUntil = performance.now() + 160;
+    $("coinLine").classList.add("ping");
+  }
+
+  /* ---------- profile ---------- */
+  function saveProfile() {
+    const body = { coins: S.coins, credits: S.credits, skin: S.skin, tail: S.tail, name: S.name, color: S.color };
+    try { localStorage.setItem("cr.profile", JSON.stringify(body)); } catch (e) {}
+    if (S.profileRef) S.profileRef.set(body).catch(() => {});
+    paintRail();
+  }
+  function applyProfile(p, remote) {
+    if (!p || typeof p !== "object") return;
+    if (typeof p.coins === "number") S.coins = remote ? Math.max(S.coins, Math.floor(p.coins)) : Math.floor(p.coins);
+    if (typeof p.credits === "number") S.credits = Math.max(0, Math.floor(p.credits));
+    if (typeof p.name === "string" && !S.name) S.name = p.name.slice(0, 14);
+    if (COLORS.includes(p.color)) S.color = p.color;
+    const sk = skinById(p.skin);
+    if (sk.cost <= S.coins) S.skin = sk.id;
+    const tl = tailById(p.tail);
+    if (tl.cost <= S.coins) S.tail = tl.id;
+  }
+  function refreshIdentity() {
+    nameInput.value = S.name;
+    paintSwatches(); paintSkins(); paintRail(); updateAppCursor(); pushPresence(true); paintVeil();
+  }
+  async function loadProfile() {
+    try {
+      const raw = localStorage.getItem("cr.profile");
+      if (raw) applyProfile(JSON.parse(raw), false);
+    } catch (e) {}
+    refreshIdentity();
+    try {
+      if (!(window.claude && window.claude.use)) return;
+      const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+      if (!db || !user) return;
+      const uid = await user.id();
+      if (!uid) return;
+      S.db = db; S.uid = uid; S.me = uid;
+      S.profileRef = db.doc("data/users/" + uid + "/profile");
+      const snap = await S.profileRef.get();
+      if (snap.exists) applyProfile(snap.data(), true);
+      else saveProfile();
+      refreshIdentity();
+      paintVeil();
+    } catch (e) { S.db = null; S.profileRef = null; }
+  }
+
+  /* ---------- presence ---------- */
+  /* the lobby only carries what the table list needs, and changes rarely */
+  function pushLobbyPresence() {
+    if (!S.room) return;
+    S.room.presence({
+      who: S.name || "pilot",
+      color: S.color,
+      table: S.table,
+      busy: S.phase === "open" || S.phase === "racing",
+      wins: S.wins
+    }).catch(() => {});
+  }
+
+  /* the table room carries the race itself, and only reaches that table */
+  function pushPresence(force) {
+    if (!S.tableRoom) return;
+    S.lastPres = performance.now();
+    const state = S.phase === "racing" ? "racing"
+      : S.phase === "open" ? (S.joined ? "ready" : "lobby")
+      : S.phase === "over" ? "out"
+      : S.phase === "watching" ? "watching"
+      : "lobby";
+    const body = {
+      who: S.name || "pilot",
+      color: S.color,
+      skin: S.skin,
+      tail: S.tail,
+      state,
+      rid: S.practice ? null : S.rid,
+      joined: S.practice ? false : S.joined,
+      bet: S.bet ? { on: S.bet.on, amt: S.bet.amt } : null,
+      wins: S.wins,
+      dist: Math.round(S.death ? S.death.dist : S.dist),
+      cursor: { x: +(S.cx / W).toFixed(3), y: +(S.cy / H).toFixed(3) }
+    };
+    S.tableRoom.presence(body).catch(() => {});
+  }
+
+  /* ---------- drawing ---------- */
+  function draw(now) {
+    if (!(scale > 0) || document.body.classList.contains("settings")) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = "#070b16";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    ctx.setTransform(scale, 0, 0, scale, offX, offY);
+    ctx.save();
+
+    const wd = S.world, dist = S.dist;
+    // everything the canvas can show, in logical units — wider than the
+    // playfield on a wide screen, taller on a narrow one
+    const x0 = -offX / scale, x1 = (cv.width - offX) / scale;
+    const y0 = -offY / scale, y1 = (cv.height - offY) / scale;
+    const uMin = dist + H - y1, uMax = dist + H - y0;
+
+    ctx.fillStyle = hatch || "#18233b";
+    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+
+    const step = 8;
+    const left = [], right = [];
+    for (let y = y0 - step; y <= y1 + step; y += step) {
+      const u = dist + H - y;
+      const hw = halfW(u), c = centerX(u, wd);
+      left.push([c - hw, y]); right.push([c + hw, y]);
+    }
+    ctx.beginPath();
+    ctx.moveTo(left[0][0], left[0][1]);
+    for (let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
+    for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+    ctx.closePath();
+    ctx.fillStyle = "#0c1324";
+    ctx.fill();
+
+    ctx.font = '600 11px "Azeret Mono", monospace';
+    ctx.textAlign = "center";
+    const first = Math.ceil(Math.max(0, uMin) / 500) * 500;
+    for (let u = first; u < uMax; u += 500) {
+      const y = H - (u - dist);
+      const c = centerX(u, wd), hw = halfW(u);
+      const marker = u > 0 && u % BREAK_EVERY === 0;
+      ctx.strokeStyle = marker ? "rgba(63,224,207,.5)" : "rgba(77,92,128,.32)";
+      ctx.lineWidth = marker ? 2 : 1;
+      ctx.beginPath(); ctx.moveTo(c - hw + 4, y); ctx.lineTo(c + hw - 4, y); ctx.stroke();
+      ctx.fillStyle = marker ? "rgba(63,224,207,.9)" : "rgba(77,92,128,.75)";
+      ctx.fillText(marker ? Math.round(u / 10) + " M  OPEN GROUND" : String(Math.round(u / 10)), c, y - 8);
+    }
+
+    const kFrom = Math.max(0, Math.floor((uMin - GATE_TH - GATE_START) / GATE_SPACE));
+    const kTo = Math.ceil((uMax - GATE_START) / GATE_SPACE);
+    for (let k = kFrom; k <= kTo; k++) {
+      if (k < 0) continue;
+      const g = gateAt(k, wd);
+      const yTop = H - (g.u + GATE_TH - dist), yBot = H - (g.u - dist);
+      const lT = g.b.c - g.b.hw, lB = g.a.c - g.a.hw;
+      const rT = g.b.c + g.b.hw, rB = g.a.c + g.a.hw;
+      const gl = g.gc - g.gw / 2, gr = g.gc + g.gw / 2;
+      ctx.fillStyle = "#27375a";
+      ctx.beginPath();
+      ctx.moveTo(lT, yTop); ctx.lineTo(gl, yTop); ctx.lineTo(gl, yBot); ctx.lineTo(lB, yBot);
+      ctx.closePath(); ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(gr, yTop); ctx.lineTo(rT, yTop); ctx.lineTo(rB, yBot); ctx.lineTo(gr, yBot);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = "rgba(255,177,46,.28)"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(lT, yTop + 1); ctx.lineTo(gl, yTop + 1);
+      ctx.moveTo(gr, yTop + 1); ctx.lineTo(rT, yTop + 1);
+      ctx.stroke();
+      ctx.fillStyle = "#ffb12e";
+      ctx.fillRect(gl - 3, yTop, 3, GATE_TH);
+      ctx.fillRect(gr, yTop, 3, GATE_TH);
+    }
+
+    for (const p of pillarsNear(uMin - 80, uMax + 80, wd)) {
+      const y = H - (p.u + p.h - dist);
+      ctx.fillStyle = "#27375a";
+      ctx.fillRect(p.x - p.w / 2, y, p.w, p.h);
+      ctx.fillStyle = "rgba(255,177,46,.28)";
+      ctx.fillRect(p.x - p.w / 2, y, p.w, 2);
+      ctx.fillStyle = "#ffb12e";
+      ctx.fillRect(p.x - p.w / 2 - 3, y, 3, p.h);
+      ctx.fillRect(p.x + p.w / 2, y, 3, p.h);
+    }
+
+    const edge = (pts) => {
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.strokeStyle = "rgba(63,224,207,.14)"; ctx.lineWidth = 7; ctx.stroke();
+      ctx.strokeStyle = "#3fe0cf"; ctx.lineWidth = 2; ctx.stroke();
+    };
+    edge(left); edge(right);
+
+    // where the playfield itself ends: past this the run is over, whatever the
+    // screen still shows
+    if (x0 < -1 || x1 > W + 1) {
+      ctx.save();
+      ctx.strokeStyle = "rgba(255,84,112,.3)";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([12, 12]);
+      ctx.beginPath();
+      ctx.moveTo(0, y0); ctx.lineTo(0, y1);
+      ctx.moveTo(W, y0); ctx.lineTo(W, y1);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    drawParticles(ctx, dist, now);
+
+    // other pilots
+    const seen = new Set();
+    for (const p of S.peers) {
+      const pr = p.presence;
+      if (!pr || p.sameTab || pr.rid !== S.rid || !pr.joined || !pr.cursor) continue;
+      const gx = Number(pr.cursor.x) * W, gy = Number(pr.cursor.y) * H;
+      if (!isFinite(gx) || !isFinite(gy)) continue;
+      const col = typeof pr.color === "string" ? pr.color : "#8b99bb";
+      const out = pr.state !== "racing";
+      const sk = skinById(pr.skin);
+      const tl = tailById(pr.tail);
+      seen.add(p.peer);
+      if (!out && tl.color) {
+        let tr = ghostTrails.get(p.peer);
+        if (!tr) { tr = []; ghostTrails.set(p.peer, tr); }
+        const last = tr[tr.length - 1];
+        if (!last || Math.abs(last[0] - gx) > 0.5 || Math.abs(last[1] - gy) > 0.5) tr.push([gx, gy]);
+        if (tr.length > 28) tr.shift();
+        ctx.globalAlpha = 0.6;
+        drawTail(ctx, tl, tr, col, now);
+        ctx.globalAlpha = 1;
+        emitParticles(p.peer, tl, col, gx, dist + H - gy, now, 0.7);
+      }
+      ctx.globalAlpha = out ? 0.26 : 0.8;
+      if (out) {
+        ctx.strokeStyle = col; ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(gx - 6, gy - 6); ctx.lineTo(gx + 6, gy + 6);
+        ctx.moveTo(gx + 6, gy - 6); ctx.lineTo(gx - 6, gy + 6);
+        ctx.stroke();
+      } else {
+        sk.draw(ctx, gx, gy, col, now);
+      }
+      ctx.globalAlpha = out ? 0.4 : 0.9;
+      ctx.fillStyle = col;
+      ctx.font = '600 12px "Azeret Mono", monospace';
+      ctx.textAlign = "center";
+      ctx.fillText(String(pr.who || "pilot").slice(0, 12), gx, gy - 17);
+      ctx.globalAlpha = 1;
+    }
+    for (const k of ghostTrails.keys()) if (!seen.has(k)) ghostTrails.delete(k);
+
+    // own cursor
+    const amRacer = S.joined && (S.phase === "racing" || (S.phase === "open" && withinWarmup()));
+    if (amRacer) {
+      const mine = skinById(S.skin);
+      drawTail(ctx, tailById(S.tail), S.trail, S.color, now);
+      if (S.phase === "open") {
+        ctx.strokeStyle = withA(S.color, .5); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(S.cx, S.cy, R + 8 + 3 * Math.sin(now / 160), 0, TAU); ctx.stroke();
+      }
+      ctx.fillStyle = withA(S.color, .16);
+      ctx.beginPath(); ctx.arc(S.cx, S.cy, R, 0, TAU); ctx.fill();
+      mine.draw(ctx, S.cx, S.cy, S.color, now);
+    } else if (S.death && S.phase === "over") {
+      ctx.strokeStyle = "#ff5470"; ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(S.cx - 9, S.cy - 9); ctx.lineTo(S.cx + 9, S.cy + 9);
+      ctx.moveTo(S.cx + 9, S.cy - 9); ctx.lineTo(S.cx - 9, S.cy + 9);
+      ctx.stroke();
+    }
+
+    ctx.restore();
+  }
+
+  function msToStart() {
+    if (S.practice) return S.startAt - performance.now();
+    if (!S.round) return Infinity;
+    return S.round.startsAt - Date.now();
+  }
+  function withinWarmup() { return msToStart() <= 4000; }
+
+  /* ---------- loop ---------- */
+  let lastRail = 0, lastBusy = false;
+  // Logic is clock-driven and idempotent, so it can run from the animation frame
+  // and from a timer — the timer keeps the lobby clock, the round result and bet
+  // settlement moving even when a background tab stops painting.
+  function step(now) {
+    const left = msToStart();
+
+    if (S.phase === "open") {
+      if (left <= 4000) {
+        veil.classList.add("thin");
+        if (S.joined) enterFocus(false);
+      }
+      if (left <= 0) {
+        S.startAt = S.practice ? S.startAt : performance.now() + left;
+        S.phase = S.joined ? "racing" : "watching";
+        S.settled = S.practice ? false : S.settled;
+        veil.classList.remove("thin");
+        $("coinNow").textContent = "0";
+        pushPresence(true);
+        paintVeil(); paintRail();
+      }
+    }
+
+    if (S.phase === "racing" || S.phase === "watching") {
+      const t = (now - S.startAt) / 1000;
+      S.dist = distAt(t);
+      $("speedTag").textContent = "flow / " + String(Math.round(speedAt(t))).padStart(3, "0") + " u/s";
+      if (S.phase === "racing") {
+        const why = hitTest(S.cx, S.cy, S.dist, S.world);
+        if (why) die(why);
+        else {
+          awardGates(S.dist + H - S.cy);
+          const lastPt = S.trail[S.trail.length - 1];
+          if (!lastPt || Math.abs(lastPt[0] - S.cx) > 0.4 || Math.abs(lastPt[1] - S.cy) > 0.4) {
+            S.trail.push([S.cx, S.cy]);
+          }
+          if (S.trail.length > 28) S.trail.shift();
+          emitParticles("me", tailById(S.tail), S.color, S.cx, S.dist + H - S.cy, now, 1);
+          S.entrants = Math.max(S.entrants, roundField().length);
+        }
+      }
+      distBig.textContent = Math.round(S.dist / 10);
+      if (S.phase === "watching" && !roundField().length && now - S.startAt > 2500) {
+        if (S.round && S.round.host === S.me) S.clearAt = Date.now();
+        backToIdle();
+      }
+      if (!S.settled) resolveRound();
+      if (S.phase === "racing" && now - S.lastPres > 50) pushPresence(false);
+    }
+
+    if (S.phase === "over" && !S.settled) resolveRound();
+
+    if (S.clearAt && Date.now() > S.clearAt) {
+      S.clearAt = 0;
+      const ref = roundRef();
+      if (ref) ref.set({ rid: "", startsAt: 0, serverNow: Date.now(), host: "" }).catch(() => {});
+    }
+
+    const busyNow = S.phase === "open" || S.phase === "racing";
+    if (busyNow !== lastBusy) { lastBusy = busyNow; pushLobbyPresence(); }
+    if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
+    if (now - lastRail > 140) { lastRail = now; paintRail(); drawPreviews(now); tickVeil(); }
+    readout.hidden = !(S.phase === "racing" || S.phase === "watching");
+  }
+  function frame(now) {
+    step(now);
+    draw(now);
+    if (document.body.classList.contains("focus")) clearFx();
+    else drawFx(now);
+    requestAnimationFrame(frame);
+  }
+  setInterval(() => step(performance.now()), 250);
+
+  /* ---------- pointer tail across the interface ---------- */
+  const fx = $("fx"), fxc = fx.getContext("2d");
+  let fxPts = [], fxParts = [], fxMoveAt = 0, fxSpark = 0;
+  const dprOf = () => Math.min(2, window.devicePixelRatio || 1);
+  function fxSize() {
+    const d = dprOf();
+    fx.width = Math.max(1, Math.round(window.innerWidth * d));
+    fx.height = Math.max(1, Math.round(window.innerHeight * d));
+    fxc.setTransform(d, 0, 0, d, 0, 0);
+  }
+  window.addEventListener("resize", fxSize);
+  window.addEventListener("pointermove", e => {
+    const now = performance.now();
+    fxMoveAt = now;
+    const last = fxPts[fxPts.length - 1];
+    if (!last || Math.abs(last[0] - e.clientX) > 1 || Math.abs(last[1] - e.clientY) > 1) {
+      fxPts.push([e.clientX, e.clientY, now]);
+    }
+    if (fxPts.length > 30) fxPts.shift();
+  });
+  function clearFx() {
+    if (!fxPts.length && !fxParts.length) return;
+    fxPts.length = 0; fxParts.length = 0;
+    fxc.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  }
+  function drawFx(now) {
+    if (fx.width !== Math.max(1, Math.round(window.innerWidth * dprOf()))) fxSize();
+    fxc.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    const tail = tailById(S.tail);
+    while (fxPts.length && now - fxPts[0][2] > 420) fxPts.shift();   // retract when idle
+    if (tail.color && fxPts.length > 1) drawTail(fxc, tail, fxPts, S.color, now);
+
+    const sp = tail.spark, head = fxPts[fxPts.length - 1];
+    if (sp && head && now - fxMoveAt < 120 && now - fxSpark > 1000 / (sp.rate * 0.6)) {
+      fxSpark = now;
+      const a = Math.random() * TAU;
+      const s = sp.spread * (0.3 + Math.random() * 0.7) * 0.5;
+      fxParts.push({
+        x: head[0], y: head[1], vx: Math.cos(a) * s, vy: Math.sin(a) * s,
+        born: now, life: sp.life, size: sp.size, col: sp.color(S.color, now),
+        grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall
+      });
+      if (fxParts.length > 160) fxParts.shift();
+    }
+    for (let i = fxParts.length - 1; i >= 0; i--) {
+      const q = fxParts[i], age = now - q.born;
+      if (age > q.life) { fxParts.splice(i, 1); continue; }
+      const t = age / 1000, f = 1 - age / q.life;
+      const r = q.size * (q.grow ? 1 + 2.4 * (1 - f) : 0.4 + 0.6 * f);
+      fxc.globalAlpha = 0.85 * f * (q.twinkle ? 0.4 + 0.6 * Math.abs(Math.sin(now / 90 + q.born)) : 1);
+      fxc.fillStyle = q.col;
+      fxc.beginPath();
+      fxc.arc(q.x + q.vx * t, q.y + q.vy * t + (q.fall ? 120 * t * t : 0), r, 0, TAU);
+      fxc.fill();
+    }
+    fxc.globalAlpha = 1;
+  }
+
+  /* ---------- the veil ---------- */
+  function wrapHTML(inner) { return '<div class="wrap">' + inner + '</div>'; }
+  function walletLine() {
+    return '<div class="stat"><span>credits <b class="cr">' + S.credits + '</b></span>' +
+           '<span>coins <b class="co">' + S.coins + '</b></span>' +
+           '<span>entry <b>' + ENTRY_FEE + '</b></span></div>';
+  }
+  function noteLine() {
+    return '<div class="note">' + (Date.now() < S.noteUntil ? esc(S.note) : "") + '</div>';
+  }
+  function entrantStrip() {
+    const f = roundField();
+    if (!f.length) return '<div class="verdict">no seats taken yet</div>';
+    return '<div class="entrants">' + f.map(p =>
+      '<span class="ent' + (p.isMe ? " me" : "") + '"><i style="background:' + esc(p.color) + '"></i>' +
+      esc(p.name) + (p.isMe ? ' <em>you</em>' : '') + '</span>').join("") + '</div>';
+  }
+
+  function paintVeil() {
+    if (S.phase === "racing" || S.phase === "watching") { veil.hidden = true; return; }
+    veil.hidden = false;
+    veil.classList.toggle("thin", S.phase === "open" && withinWarmup());
+
+    if (S.phase === "open") {
+      const secs = Math.max(0, Math.ceil(msToStart() / 1000));
+      if (withinWarmup()) {
+        veil.innerHTML = wrapHTML('<div class="count">' + (secs === 0 ? "GO" : secs) + '</div>' +
+          '<p>' + (S.joined ? "Put your cursor in the channel." : "Watching this one.") + '</p>');
+        return;
+      }
+      const pot = roundField().length * ENTRY_FEE;
+      veil.innerHTML = wrapHTML(
+        '<div class="verdict">race opens in</div>' +
+        '<div class="count">' + secs + '</div>' +
+        entrantStrip() +
+        '<div class="stat"><span>prize pot <b class="cr">' + pot + '</b></span>' +
+          '<span>entry <b>' + ENTRY_FEE + '</b></span>' +
+          '<span>your credits <b class="cr">' + S.credits + '</b></span></div>' +
+        '<div class="btnrow">' +
+          (S.joined
+            ? '<button class="go" disabled>Seat confirmed</button>'
+            : '<button class="go" data-act="join">Join &middot; ' + ENTRY_FEE + ' credits</button>') +
+          (S.joined ? '' : '<button class="go ghost" data-act="watch">Watch and bet</button>') +
+        '</div>' +
+        '<p>' + (S.joined
+          ? "You are in. The channel opens when the clock hits zero."
+          : "Confirm a seat before the clock runs out, or sit this one out and bet on a pilot from the rail.") + '</p>' +
+        noteLine());
+      return;
+    }
+
+    if (S.phase === "over") {
+      const r = S.result;
+      const m = Math.round((S.death ? S.death.dist : S.dist) / 10);
+      const unlocked = S.newUnlocks.length
+        ? '<div class="unlocked-note">new cursor: ' + esc(S.newUnlocks.join(", ")) + '</div>' : '';
+      const betLine = r && r.betWon ? " Your bet paid " + r.betWon + " credits."
+        : (S.bet ? " Your bet lost " + S.bet.amt + " credits." : "");
+      let head, verdict, detail;
+      if (S.practice) {
+        head = String(m);
+        verdict = (S.death ? esc(S.death.why) : "out") + " at " + m + " m";
+        detail = "Practice run, nothing staked. Coins still count.";
+      } else if (r && r.iWon) {
+        head = "LAST<br><span class='race'>POINTER</span>";
+        verdict = "you took the pot";
+        detail = "Won " + r.gain + " credits from a " + r.pot + " credit pot, " + r.of + " entrants.";
+      } else if (r && !S.joined) {
+        head = String(Math.round(r.best / 10));
+        verdict = esc(r.winner) + " took the pot";
+        detail = "A " + r.pot + " credit pot from " + r.of + " entrants." + betLine;
+      } else if (r) {
+        head = String(m);
+        verdict = (S.death ? esc(S.death.why) : "out") + " at " + m + " m";
+        detail = esc(r.winner) + " won. Placed " + (r.rank || r.of) + " of " + r.of + ".";
+      } else {
+        head = String(m);
+        verdict = (S.death ? esc(S.death.why) : "out") + " at " + m + " m";
+        detail = "Waiting for the rest of the field.";
+      }
+      veil.innerHTML = wrapHTML(
+        '<h1>' + head + '</h1>' +
+        '<div class="verdict">' + verdict + '</div>' +
+        (S.joined
+          ? '<div class="coinline" style="justify-content:center"><span class="pip"></span><b>' + S.runCoins + '</b>' +
+            '<span>' + (S.runCoins === 1 ? "gate cleared" : "gates cleared") + '</span></div>'
+          : '') +
+        unlocked +
+        '<p>' + detail + '</p>' +
+        walletLine() +
+        '<div class="btnrow">' +
+          '<button class="go" data-act="open">Open a race</button>' +
+          '<button class="go ghost" data-act="practice">Practice run</button>' +
+          '<button class="go ghost" data-act="leave">Change table</button>' +
+        '</div>' +
+        noteLine());
+      return;
+    }
+
+    if (!S.table && S.db) { paintTables(); return; }
+
+    // idle, at a table
+    veil.innerHTML = wrapHTML(
+      '<h1>CURSOR<br><span class="race">RACE</span></h1>' +
+      '<div class="verdict">' + esc(tableName(S.table)) + ' &middot; ' +
+        (roundField().length || S.peers.length) + ' here</div>' +
+      '<div class="rules">' +
+        '<div><b>Guide your cursor</b> down the channel as it scrolls.</div>' +
+        '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
+        '<div><b>The channel narrows and speeds up</b> the further you get.</div>' +
+        '<div><b>Last pointer still inside takes the whole pot.</b></div>' +
+        '<div><b>Opening a race starts a 30 second gate</b> &mdash; ' + ENTRY_FEE + ' credits a seat.</div>' +
+        '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
+        '<div><b>Every gate you clear pays 1 coin</b> and coins unlock new cursor designs.</div>' +
+      '</div>' +
+      walletLine() +
+      '<div class="btnrow">' +
+        '<button class="go" data-act="open">Open a race &middot; ' + ENTRY_FEE + '</button>' +
+        '<button class="go ghost" data-act="practice">Practice run</button>' +
+        '<button class="go ghost" data-act="leave">Change table</button>' +
+        '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
+      '</div>' +
+      '<p id="veilNote">' + (S.db
+        ? "Everyone on this link shares one race clock. Open a race and the others have 30 seconds to take a seat."
+        : "Sign-in data is not available here, so this view runs practice runs only.") + '</p>' +
+      noteLine());
+  }
+
+  function paintTables() {
+    const counts = tableCounts();
+    const here = S.lobbyPeers.length;
+    const cards = TABLES.map(id => {
+      const c = counts[id] || { n: 0, busy: false };
+      const full = c.n >= TABLE_CAP;
+      const status = c.busy ? "racing" : c.n ? "waiting" : "empty";
+      return '<button class="tcard' + (full ? " full" : "") + '" data-table="' + id + '"' +
+        (full ? " disabled" : "") + '>' +
+        '<span class="tname">' + tableName(id) + '</span>' +
+        '<span class="tnum">' + c.n + '<em>/' + TABLE_CAP + '</em></span>' +
+        '<span class="tstate ' + status + '">' + status + '</span></button>';
+    }).join("");
+    veil.innerHTML = wrapHTML(
+      '<h1>CURSOR<br><span class="race">RACE</span></h1>' +
+      '<p>Pick a table. Each one runs its own race on its own channel, up to ' +
+        TABLE_CAP + ' pilots. Opening a race there starts a 30 second gate.</p>' +
+      '<div class="tables">' + cards + '</div>' +
+      walletLine() +
+      '<div class="verdict">' + here + (here === 1 ? " pilot" : " pilots") + ' on the site</div>' +
+      '<div class="btnrow">' +
+        '<button class="go ghost" data-act="practice">Practice run</button>' +
+        '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
+      '</div>' +
+      noteLine());
+  }
+
+  // keeps the open-window clock ticking without rebuilding the whole veil
+  function tickVeil() {
+    if (S.phase !== "open") return;
+    const secs = Math.max(0, Math.ceil(msToStart() / 1000));
+    const el = veil.querySelector(".count");
+    if (!el) { paintVeil(); return; }
+    const want = withinWarmup() ? (secs === 0 ? "GO" : String(secs)) : String(secs);
+    if (el.textContent !== want) el.textContent = want;
+    if (withinWarmup() && !veil.classList.contains("thin")) paintVeil();
+  }
+
+  veil.addEventListener("click", e => {
+    const t = e.target.closest("button[data-table]");
+    if (t && !t.disabled) { joinTable(t.dataset.table); return; }
+    const b = e.target.closest("button[data-act]");
+    if (!b) return;
+    const a = b.dataset.act;
+    if (a === "leave") { leaveTable(false); return; }
+    if (a === "open") openRace();
+    else if (a === "join") joinRace();
+    else if (a === "practice") practiceRun();
+    else if (a === "watch") { say("sitting this one out - bets are in the rail"); document.body.classList.add("hideveil"); }
+    else if (a === "hide") document.body.classList.add("settings");
+  });
+  $("toLobby").addEventListener("click", () => {
+    document.body.classList.remove("hideveil");
+    document.body.classList.remove("settings");
+    requestAnimationFrame(fit);
+    paintVeil();
+  });
+
+  /* ---------- rail ---------- */
+  function paintRail() {
+    $("crNum").textContent = S.credits;
+    $("coNum").textContent = S.coins;
+    $("tagline").textContent = S.practice ? "practice run"
+      : S.table ? tableName(S.table).toLowerCase() + " / last pointer standing"
+      : "last pointer standing";
+
+    // betting panel: only for people not in the race, while one is live
+    const canBet = !S.joined && !S.practice && (S.phase === "open" || S.phase === "watching");
+    const betCard = $("betCard");
+    betCard.hidden = !canBet;
+    if (canBet) {
+      $("betState").textContent = S.bet ? "staked " + S.bet.amt : "pick one";
+      const stakeHTML = STAKES.map(v =>
+        '<button class="stake" data-stake="' + v + '" aria-pressed="' + (v === S.stake) + '"' +
+        (S.bet ? " disabled" : "") + '>' + v + '</button>').join("");
+      if ($("stakes").dataset.h !== stakeHTML) { $("stakes").dataset.h = stakeHTML; $("stakes").innerHTML = stakeHTML; }
+      const f = roundField();
+      const n = Math.max(f.length, 1);
+      const rows = f.map(p => {
+        const dead = !p.racing && !p.pending;
+        const picked = S.bet && S.bet.on === p.peer;
+        return '<button class="betrow" data-bet="' + esc(p.peer) + '"' +
+          (S.bet || dead ? " disabled" : "") + '>' +
+          '<span class="chip" style="background:' + esc(p.color) + '"></span>' +
+          '<span class="nm">' + esc(p.name) + (picked ? " (your pick)" : "") + '</span>' +
+          '<span class="odds">' + (dead ? "out" : "x" + n) + '</span></button>';
+      }).join("");
+      const html = rows || '<div class="empty">No pilots yet.</div>';
+      if ($("betList").dataset.h !== html) { $("betList").dataset.h = html; $("betList").innerHTML = html; }
+      $("betHint").textContent = S.bet
+        ? "returns " + (S.bet.amt * n) + " credits if your pick wins"
+        : "pays stake x " + n + " if your pick wins";
+    }
+
+    // standings / roster
+    const field = roundField();
+    if (document.body.classList.contains("focus")) {
+      const lh = field.slice().sort((a, b) => b.dist - a.dist).map(p =>
+        '<span class="lrow' + (p.racing ? "" : " gone") + '">' +
+          '<em>' + esc(p.name) + (p.isMe ? " (you)" : "") + '</em>' +
+          '<b>' + Math.round(p.dist / 10) + '</b>' +
+          '<i style="background:' + esc(p.color) + '"></i></span>').join("");
+      const live = $("live");
+      if (live.dataset.h !== lh) { live.dataset.h = lh; live.innerHTML = lh; }
+    }
+
+    let rows, title, count;
+    if (S.rid && field.length) {
+      const bets = watcherBets();
+      rows = field.slice().sort((a, b) => b.dist - a.dist).map(p => {
+        const backers = bets.filter(b => b.on === p.peer);
+        const staked = backers.reduce((s, b) => s + b.amt, 0);
+        return '<div class="row' + (p.isMe ? " me" : "") + (p.racing || p.pending ? "" : " out") + '">' +
+          '<span class="chip" style="background:' + esc(p.color) + '"></span>' +
+          '<span class="nm">' + esc(p.name) + (p.isMe ? " (you)" : "") +
+            (staked ? ' <span class="val">' + staked + ' on</span>' : '') + '</span>' +
+          '<span class="val"><b>' + Math.round(p.dist / 10) + '</b> m</span></div>';
+      });
+      title = "This race"; count = field.filter(p => p.racing || p.pending).length + " in";
+    } else {
+      const lobby = S.peers.length
+        ? S.peers.map(p => ({
+            isMe: p.sameTab,
+            name: String((p.presence && p.presence.who) || "pilot").slice(0, 14),
+            color: (p.presence && typeof p.presence.color === "string") ? p.presence.color : "#8b99bb",
+            wins: Number((p.presence && p.presence.wins) || 0)
+          }))
+        : [{ isMe: true, name: S.name || "pilot", color: S.color, wins: S.wins }];
+      rows = lobby.map(p =>
+        '<div class="row' + (p.isMe ? " me" : "") + '">' +
+          '<span class="chip" style="background:' + esc(p.color) + '"></span>' +
+          '<span class="nm">' + esc(p.name) + (p.isMe ? " (you)" : "") + '</span>' +
+          '<span class="val"><b>' + p.wins + '</b> won</span></div>');
+      title = "On the channel"; count = lobby.length + (lobby.length === 1 ? " pilot" : " pilots");
+    }
+    $("boardTitle").textContent = title;
+    $("boardCount").textContent = count;
+    const html = rows.join("") || '<div class="empty">Nobody here yet.</div>';
+    if (board.dataset.h !== html) { board.dataset.h = html; board.innerHTML = html; }
+  }
+
+  $("stakes").addEventListener("click", e => {
+    const b = e.target.closest("[data-stake]");
+    if (!b || b.disabled) return;
+    S.stake = Number(b.dataset.stake) || STAKES[1];
+    paintRail();
+  });
+  $("betList").addEventListener("click", e => {
+    const b = e.target.closest("[data-bet]");
+    if (!b || b.disabled) return;
+    placeBet(b.dataset.bet);
+  });
+
+  /* ---------- identity controls ---------- */
+  function loadLocal() {
+    try {
+      S.name = localStorage.getItem("cr.name") || "";
+      const c = localStorage.getItem("cr.color");
+      if (c && COLORS.includes(c)) S.color = c;
+    } catch (e) {}
+  }
+  function saveLocal() {
+    try {
+      localStorage.setItem("cr.name", S.name);
+      localStorage.setItem("cr.color", S.color);
+    } catch (e) {}
+  }
+  nameInput.addEventListener("input", () => {
+    S.name = nameInput.value.trim().slice(0, 14);
+    saveLocal(); saveProfile(); pushPresence(true);
+  });
+  function paintSwatches() {
+    $("swatches").innerHTML = COLORS.map(c =>
+      '<button class="sw" data-c="' + c + '" aria-pressed="' + (c === S.color) + '" aria-label="colour ' + c + '" style="background:' + c + '"></button>'
+    ).join("");
+  }
+  $("swatches").addEventListener("click", e => {
+    const b = e.target.closest(".sw");
+    if (!b) return;
+    S.color = b.dataset.c;
+    saveLocal(); saveProfile(); paintSwatches(); paintSkins(); updateAppCursor(); pushPresence(true);
+  });
+
+  const previews = [];
+  function grid(host, items, chosen, sig) {
+    if (host.dataset.sig === sig) return;
+    host.dataset.sig = sig;
+    host.innerHTML = items.map(s => {
+      const locked = s.cost > S.coins;
+      return '<button class="skin' + (locked ? " locked" : "") + '" data-id="' + s.id + '"' +
+        (locked ? ' disabled aria-label="' + esc(s.name) + ', locked, needs ' + s.cost + ' coins"'
+                : ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"') +
+        '><canvas width="68" height="68"></canvas>' +
+        '<span class="lbl">' + (locked ? s.cost : esc(s.name)) + '</span></button>';
+    }).join("");
+    host.querySelectorAll("canvas").forEach((c, i) => previews.push({ c, item: items[i] }));
+  }
+  function nextUnlock(items) {
+    const locked = items.filter(s => s.cost > S.coins);
+    return locked.length ? locked.reduce((a, b) => (b.cost < a.cost ? b : a)) : null;
+  }
+  function paintSkins() {
+    const sig = S.coins + "|" + S.skin + "|" + S.tail + "|" + S.color;
+    if ($("skins").dataset.sig !== sig || $("tails").dataset.sig !== sig) previews.length = 0;
+    grid($("skins"), SKINS, S.skin, sig);
+    grid($("tails"), TAILS, S.tail, sig);
+    $("coinTotal").textContent = S.coins + (S.coins === 1 ? " coin" : " coins");
+    const nh = nextUnlock(SKINS), nt = nextUnlock(TAILS);
+    $("skinHint").textContent = nh
+      ? (nh.cost - S.coins) + " more coins unlocks " + nh.name.toLowerCase()
+      : "every cursor unlocked";
+    $("tailHint").textContent = nt
+      ? (nt.cost - S.coins) + " more coins unlocks the " + nt.name.toLowerCase() + " tail"
+      : "every tail unlocked";
+  }
+  const SAMPLE = [];
+  for (let i = 0; i <= 9; i++) {
+    const f = i / 9;
+    SAMPLE.push([-24 + f * 24, 15 - f * 15 + Math.sin(f * 3.4) * 5]);
+  }
+  function drawPreviews(now) {
+    for (const p of previews) {
+      const c = p.c.getContext("2d");
+      c.setTransform(2, 0, 0, 2, 0, 0);
+      c.clearRect(0, 0, 34, 34);
+      c.save(); c.translate(17, 17);
+      if (p.item.draw) {
+        c.scale(.78, .78);
+        p.item.draw(c, 0, p.item.id === "arrow" ? -8 : 0, S.color, now);
+      } else if (p.item.color) {
+        c.scale(.55, .55);
+        drawTail(c, p.item, SAMPLE, S.color, now);
+        const sp = p.item.spark;
+        if (sp) {
+          for (let i = 0; i < 5; i++) {
+            const a = i * 2.3 + now / 900;
+            c.globalAlpha = .5 + .3 * Math.sin(now / 200 + i);
+            c.fillStyle = sp.color(S.color, now);
+            c.beginPath();
+            c.arc(-16 + i * 5 + Math.cos(a) * 5, 9 - i * 2 + Math.sin(a) * 6, sp.size * 1.3, 0, TAU);
+            c.fill();
+          }
+          c.globalAlpha = 1;
+        }
+      } else {
+        c.strokeStyle = "#4d5c80"; c.lineWidth = 1.5;
+        c.beginPath(); c.arc(0, 0, 8, 0, TAU);
+        c.moveTo(-5.6, 5.6); c.lineTo(5.6, -5.6);
+        c.stroke();
+      }
+      c.restore();
+    }
+  }
+  $("skins").addEventListener("click", e => {
+    const b = e.target.closest(".skin");
+    if (!b || b.disabled) return;
+    S.skin = b.dataset.id;
+    saveProfile(); paintSkins(); updateAppCursor(); pushPresence(true);
+  });
+  $("tails").addEventListener("click", e => {
+    const b = e.target.closest(".skin");
+    if (!b || b.disabled) return;
+    S.tail = b.dataset.id;
+    saveProfile(); paintSkins(); pushPresence(true);
+  });
+
+  /* the chosen head doubles as the page's own mouse cursor */
+  let cursorUrl = "";
+  function updateAppCursor() {
+    const head = skinById(S.skin);
+    const c = document.createElement("canvas");
+    c.width = c.height = 40;
+    const g = c.getContext("2d");
+    g.translate(20, 20);
+    try { head.draw(g, 0, 0, S.color, 0); } catch (e) { return; }
+    let url;
+    try { url = c.toDataURL("image/png"); } catch (e) { return; }
+    if (url === cursorUrl) return;
+    cursorUrl = url;
+    document.documentElement.style.cursor = "url(" + url + ") 20 20, auto";
+  }
+
+  window.addEventListener("keydown", e => {
+    if (document.activeElement === nameInput) return;
+    if (e.code === "Space" || e.code === "Enter") {
+      e.preventDefault();
+      if (S.phase === "open" && !S.joined) joinRace();
+      else if (S.phase === "idle" || S.phase === "over") openRace();
+    }
+  });
+
+  /* ---------- room ---------- */
+  function setNet(on, label) {
+    $("netDot").classList.toggle("on", !!on);
+    $("netText").textContent = label;
+  }
+  async function connect() {
+    let room = null;
+    try { room = await window.claude?.use?.("room"); } catch (e) { room = null; }
+    if (!room) { setNet(false, "solo channel"); return; }
+    S.room = room;
+    setNet(room.connected(), room.connected() ? "channel live" : "connecting");
+    room.onConnection(c => setNet(c, c ? "channel live" : "reconnecting"),
+      () => setNet(false, "solo channel"));
+    room.onPeers(ch => {
+      S.lobbyPeers = ch.peers.slice();
+      if (!S.table) paintVeil();
+      paintRail();
+    }, () => { S.lobbyPeers = []; setNet(false, "solo channel"); });
+    pushLobbyPresence();
+  }
+
+  /* ---------- boot ---------- */
+  function boot(saved) {
+    if (saved && typeof saved === "object") {
+      if (typeof saved.name === "string") S.name = saved.name;
+      if (COLORS.includes(saved.color)) S.color = saved.color;
+      if (typeof saved.wins === "number") S.wins = saved.wins;
+      if (typeof saved.coins === "number") S.coins = Math.max(S.coins, saved.coins);
+      if (typeof saved.credits === "number") S.credits = saved.credits;
+      if (typeof saved.skin === "string" && skinById(saved.skin).cost <= S.coins) S.skin = saved.skin;
+      if (typeof saved.tail === "string" && tailById(saved.tail).cost <= S.coins) S.tail = saved.tail;
+    }
+    nameInput.value = S.name;
+    paintSwatches();
+    paintSkins();
+    updateAppCursor();
+    fxSize();
+    fit();
+    paintVeil();
+    paintRail();
+    requestAnimationFrame(frame);
+    connect();
+    loadProfile();
+  }
+
+  loadLocal();
+  try {
+    window.claude?.hot?.snapshot?.(() => ({
+      name: S.name, color: S.color, wins: S.wins, coins: S.coins, credits: S.credits,
+      skin: S.skin, tail: S.tail
+    }));
+  } catch (e) {}
+  if (window.claude?.hot?.ready) window.claude.hot.ready(boot);
+  else boot(window.claude?.hot?.data ?? {});
+})();
+</script>
