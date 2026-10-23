@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Cursor Race</title>
-<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}#account{position:fixed;left:max(14px,env(safe-area-inset-left,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;border-radius:999px;background:#0c1324;box-shadow:inset 0 0 0 1px #27375a;font:12px "Azeret Mono",ui-monospace,monospace;color:#8b99bb}body.focus #account,body.settings #account{display:none}#account img{width:22px;height:22px;border-radius:50%;display:block}#account .dot{width:9px;height:9px;border-radius:50%;background:#4d5c80;margin-left:4px}#account .nm{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef2fb}#account .nm.guest{color:#8b99bb}#account .act{color:#3fe0cf;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:10px;padding:4px 9px;border-radius:999px;box-shadow:inset 0 0 0 1px #27375a}#account .act:hover{background:rgba(63,224,207,.12)}#account .act.primary{color:#070b16;background:#ffb12e;box-shadow:none;font-weight:600}#account .act.primary:hover{background:#ffc15c}#signin-failed{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;font:12px "Azeret Mono",ui-monospace,monospace}</style>
+<style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}#account{position:fixed;left:max(14px,env(safe-area-inset-left,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;border-radius:999px;background:#0c1324;box-shadow:inset 0 0 0 1px #27375a;font:12px "Azeret Mono",ui-monospace,monospace;color:#8b99bb}body.focus #account,body.settings #account{display:none}#account.inline{position:static;margin:2px auto 0}#account img{width:22px;height:22px;border-radius:50%;display:block}#account .dot{width:9px;height:9px;border-radius:50%;background:#4d5c80;margin-left:4px}#account .nm{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef2fb}#account .nm.guest{color:#8b99bb}#account .act{color:#3fe0cf;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:10px;padding:4px 9px;border-radius:999px;box-shadow:inset 0 0 0 1px #27375a}#account .act:hover{background:rgba(63,224,207,.12)}#account .act.primary{color:#070b16;background:#ffb12e;box-shadow:none;font-weight:600}#account .act.primary:hover{background:#ffc15c}#signin-failed{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;font:12px "Azeret Mono",ui-monospace,monospace}</style>
 </head>
 <body>
 <script src="claude-shim.js"></script>
@@ -86,6 +86,11 @@
   }
   .corner.tl { top: 10px; left: 12px; }
   .corner.tr { top: 10px; right: 12px; text-align: right; }
+  .corner.bl { bottom: 10px; left: 12px; }
+  body.focus .corner.bl {
+    left: max(12px, env(safe-area-inset-left, 0px));
+    bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
 
   .readout {
     position: absolute;
@@ -199,12 +204,23 @@
   #fx { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
   body.focus #fx { display: none; }
 
-  /* lobby music toggle, out of the way in the top corner */
-  #musicBtn {
+  /* lobby music, out of the way in the top corner */
+  #musicCtl {
     position: fixed;
     top: max(14px, env(safe-area-inset-top, 0px));
     right: max(14px, env(safe-area-inset-right, 0px));
     z-index: 72;
+    display: grid;
+    justify-items: center;
+    gap: 6px;
+  }
+  body.focus #musicCtl { display: none; }
+  #musicVol {
+    width: 72px;
+    accent-color: var(--aqua);
+    cursor: inherit;
+  }
+  #musicBtn {
     width: 38px; height: 38px;
     display: grid;
     place-items: center;
@@ -219,7 +235,32 @@
   #musicBtn .slash { opacity: 0; }
   #musicBtn.off { color: var(--faint); }
   #musicBtn.off .slash { opacity: 1; }
-  body.focus #musicBtn { display: none; }
+  /* touch control: a thumb stick on the right, where a right hand falls */
+  #stick {
+    position: fixed;
+    right: max(18px, env(safe-area-inset-right, 0px));
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 74;
+    width: 128px; height: 128px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--field) 70%, transparent);
+    box-shadow: inset 0 0 0 2px var(--wall-line);
+    touch-action: none;
+    display: grid;
+    place-items: center;
+  }
+  #knob {
+    width: 54px; height: 54px;
+    border-radius: 50%;
+    background: color-mix(in srgb, var(--aqua) 26%, var(--wall));
+    box-shadow: inset 0 0 0 2px var(--aqua);
+    transition: transform .05s linear;
+    pointer-events: none;
+  }
+  body.lobby .rail { display: none; }
+  body.lobby .veil { background: color-mix(in srgb, var(--void) 74%, transparent); }
+
   .sr {
     position: absolute;
     width: 1px; height: 1px;
@@ -272,6 +313,20 @@
     line-height: .9;
     font-variant-numeric: tabular-nums;
   }
+  .lights { display: flex; gap: 16px; }
+  .lamp {
+    width: clamp(34px, 7vh, 58px);
+    aspect-ratio: 1;
+    border-radius: 50%;
+    background: #151d2f;
+    box-shadow: inset 0 0 0 2px #27375a;
+    transition: box-shadow .12s ease, background .12s ease;
+  }
+  .lamp.red.on { background: #ff4d4d; box-shadow: 0 0 26px #ff4d4d, inset 0 0 0 2px #ff8c8c; }
+  .lamp.amber.on { background: #ffb12e; box-shadow: 0 0 26px #ffb12e, inset 0 0 0 2px #ffd48a; }
+  .lamp.green.on { background: #4de06a; box-shadow: 0 0 30px #4de06a, inset 0 0 0 2px #a5f0b6; }
+  .veil .count.small { font-size: clamp(44px, 11vh, 92px); }
+
   .veil .verdict {
     font-family: var(--data);
     font-size: 11px;
@@ -290,6 +345,15 @@
     max-width: 74ch;
   }
   .rules b { color: var(--ink); font-weight: 600; }
+  .record {
+    font-family: var(--display);
+    font-size: clamp(22px, 4vh, 34px);
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+    color: var(--amber);
+    text-shadow: 0 0 22px color-mix(in srgb, var(--amber) 45%, transparent);
+  }
   .unlocked-note {
     font-family: var(--data);
     font-size: 11px;
@@ -540,14 +604,16 @@
   .skin.locked { opacity: .55; }
   .skin.locked canvas { opacity: .35; }
   .skin.armed { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); opacity: 1; }
+  /* the lock sits in the corner so the item itself stays visible */
   .skin .lock {
     position: absolute;
-    top: 50%; left: 50%;
-    width: 15px; height: 15px;
-    transform: translate(-50%, -62%);
+    top: 3px; right: 3px;
+    width: 11px; height: 11px;
     color: var(--dim);
     pointer-events: none;
   }
+  .skin.locked canvas { opacity: .72; }
+  .skin.previewing { border-color: var(--aqua); }
   .skin.armed .lock { color: var(--amber); }
   .skin.locked .lbl::before {
     content: "";
@@ -604,6 +670,13 @@
     color: var(--dim);
   }
   .row .val b { color: var(--ink); font-weight: 600; }
+  #ladder .row { grid-template-columns: 16px 1fr auto; }
+  #ladder .rank {
+    font-family: var(--data);
+    font-size: 10px;
+    color: var(--faint);
+    text-align: center;
+  }
   .empty { font-family: var(--data); font-size: 11px; color: var(--faint); line-height: 1.6; }
   .scroller { display: flex; flex-direction: column; }
   .scroller .grid-list { max-height: 208px; }
@@ -660,6 +733,7 @@
       <div class="corner tl">channel 01 / drift test</div>
       <div class="corner tr" id="speedTag">hold / 000 u/s</div>
       <div class="live" id="live"></div>
+      <div class="corner bl" id="pingTag"></div>
       <div class="readout" id="readout" hidden>
         <div class="big" id="distBig">0</div>
         <div class="unit">metres clear</div>
@@ -716,20 +790,30 @@
       <h2><span id="boardTitle">On the channel</span><span id="boardCount"></span></h2>
       <div class="grid-list" id="board"></div>
     </div>
+
+    <div class="card scroller">
+      <h2><span>Leaderboard</span><span id="myBest"></span></h2>
+      <div class="grid-list" id="ladder"></div>
+    </div>
   </aside>
 </div>
 
 <div class="veil" id="veil"></div>
 
-<button id="musicBtn" aria-pressed="true" title="Lobby music">
-  <svg viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M10 18V7l9-2v11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="7.5" cy="18" r="2.6" fill="currentColor"/>
-    <circle cx="16.5" cy="16" r="2.6" fill="currentColor"/>
-    <line class="slash" x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-  </svg>
-  <span class="sr">Lobby music</span>
-</button>
+<div id="musicCtl">
+  <button id="musicBtn" aria-pressed="true" title="Lobby music">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M10 18V7l9-2v11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="7.5" cy="18" r="2.6" fill="currentColor"/>
+      <circle cx="16.5" cy="16" r="2.6" fill="currentColor"/>
+      <line class="slash" x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span class="sr">Lobby music</span>
+  </button>
+  <input id="musicVol" type="range" min="0" max="100" value="32" aria-label="Music volume">
+</div>
+
+<div id="stick" hidden><div id="knob"></div></div>
 
 <canvas id="fx"></canvas>
 
@@ -744,7 +828,7 @@
   const T_CAP = TA * (VMAX / V0 - 1);
   const GATE_START = 900, GATE_SPACE = 520, GATE_TH = 20;
 
-  const JOIN_WINDOW = 30000;   // 30 s to confirm a seat
+  const JOIN_WINDOW = 10000;   // default only; the server's value wins once seen
   const TABLES = ["t1", "t2", "t3", "t4", "t5", "t6"];
   const TABLE_CAP = 10;
   const tableName = id => "Table " + (TABLES.indexOf(id) + 1);
@@ -782,14 +866,17 @@
     const key = String(seed);
     const rnd = mulberry32(hashStr(key));
     const ph = [rnd() * 6.2832, rnd() * 6.2832, rnd() * 6.2832];
-    const per = [350 + rnd() * 130, 180 + rnd() * 65, 96 + rnd() * 32];
+    const per = [300 + rnd() * 100, 155 + rnd() * 50, 84 + rnd() * 28];
     const gates = [];
     for (let i = 0; i < 420; i++) gates.push(rnd() * 2 - 1);
     pillarCache.clear();
     return { seed: key, ph, per, gates };
   }
   const press = u => Math.min(1, Math.max(0, u) / 9000);
-  const baseHalf = u => 150 - 104 * press(u);
+  /* the channel breathes — tight stretches and wide ones alternate on two
+     scales, so the width keeps changing instead of only narrowing with age */
+  const squeeze = u => 0.95 + 0.18 * Math.sin(u / 520) * Math.cos(u / 1270) - 0.08 * Math.sin(u / 240);
+  const baseHalf = u => (150 - 104 * press(u)) * squeeze(u);
 
   /* every 1000 m the channel opens into a wide plaza — easier walls, but it is
      filled with pillars, so the breather costs attention instead of nerve */
@@ -807,7 +894,7 @@
   const gapW = u => (190 - 96 * press(u)) * (halfW(u) / baseHalf(u));
 
   function centerX(u, wd) {
-    const A = (0.18 + 0.16 * press(u)) * W * (1 - 0.6 * breakE(u));
+    const A = (0.21 + 0.16 * press(u)) * W * (1 - 0.6 * breakE(u));
     const s = 0.55 * Math.sin(u / wd.per[0] + wd.ph[0])
             + 0.30 * Math.sin(u / wd.per[1] + wd.ph[1])
             + 0.15 * Math.sin(u / wd.per[2] + wd.ph[2]);
@@ -1108,6 +1195,11 @@
   const tailById = id => TAILS.find(t => t.id === id) || TAILS[0];
   /* free items are everyone's; the rest are bought and remembered */
   const owns = (item, kind) => !!item && (item.cost === 0 || S.owned[kind].has(item.id));
+  /* an armed item is worn on the pilot page only — never in a race, never to
+     other players, and never saved until it is actually bought */
+  const previewing = () => S.buying && document.body.classList.contains("settings");
+  const effSkin = () => (previewing() && S.buying.kind === "skins") ? skinById(S.buying.id) : skinById(S.skin);
+  const effTail = () => (previewing() && S.buying.kind === "tails") ? tailById(S.buying.id) : tailById(S.tail);
 
   function drawTail(c, tail, pts, col, now) {
     if (!tail || !tail.color || !pts || pts.length < 2) return;
@@ -1234,6 +1326,11 @@
     result: null,
     entrants: 1,
     newUnlocks: [],
+    gateSecs: Math.round(JOIN_WINDOW / 1000),
+    ping: null,
+    best: 0,
+    newRecord: false,
+    board: [],
     name: "",
     color: COLORS[0],
     skin: "dot",
@@ -1303,9 +1400,34 @@
     S.inside = true;
   });
   stage.addEventListener("pointerleave", () => {
+    if (stickVec) return;              // the thumb stick is driving, not the pointer
     S.inside = false;
     if (S.phase === "racing") die("left the channel");
   });
+
+  /* ---------- touch: a thumb stick instead of a pointer ---------- */
+  const TOUCH = matchMedia("(pointer: coarse)").matches;
+  let stickVec = null, lastStepAt = 0;
+  const stickEl = $("stick"), knobEl = $("knob");
+  function stickAt(e) {
+    const r = stickEl.getBoundingClientRect();
+    const dx = (e.clientX - (r.left + r.width / 2)) / (r.width / 2);
+    const dy = (e.clientY - (r.top + r.height / 2)) / (r.height / 2);
+    const m = Math.hypot(dx, dy) || 1;
+    const k = Math.min(1, m);
+    stickVec = { x: (dx / m) * k, y: (dy / m) * k };
+    knobEl.style.transform = "translate(" + (stickVec.x * 33).toFixed(1) + "px," +
+      (stickVec.y * 33).toFixed(1) + "px)";
+  }
+  stickEl.addEventListener("pointerdown", e => {
+    stickEl.setPointerCapture(e.pointerId);
+    S.inside = true;
+    stickAt(e);
+    e.preventDefault();
+  });
+  stickEl.addEventListener("pointermove", e => { if (stickVec) stickAt(e); });
+  ["pointerup", "pointercancel"].forEach(ev =>
+    stickEl.addEventListener(ev, () => { stickVec = null; knobEl.style.transform = ""; }));
   stage.addEventListener("pointerdown", e => e.preventDefault());
 
   /* ---------- focus mode ---------- */
@@ -1331,17 +1453,25 @@
   function say(msg) { S.note = msg; S.noteUntil = Date.now() + 4000; paintVeil(); }
 
   /* ---------- tables ---------- */
+  /* everyone on the site, counted as people rather than open tabs */
+  function peopleHere() {
+    const ids = new Set();
+    for (const p of S.lobbyPeers) ids.add(p.by || p.peer);
+    return ids.size;
+  }
   function tableCounts() {
-    const m = {};
-    for (const t of TABLES) m[t] = { n: 0, busy: false };
+    const seats = {};
+    for (const t of TABLES) seats[t] = { ids: new Set(), busy: false };
     for (const p of S.lobbyPeers) {
       const pr = p.presence || {};
-      const slot = m[pr.table];
+      const slot = seats[pr.table];
       if (!slot) continue;
-      slot.n++;
+      slot.ids.add(p.by || p.peer);        // your second tab is not a second pilot
       if (pr.busy) slot.busy = true;
     }
-    return m;
+    const out = {};
+    for (const t of TABLES) out[t] = { n: seats[t].ids.size, busy: seats[t].busy };
+    return out;
   }
 
   async function joinTable(id) {
@@ -1415,13 +1545,16 @@
     if (S.round && S.round.rid === rid) return;
     if (S.practice) return;                       // finish the practice run first
     const skew = Date.now() - (Number(d.serverNow) || Date.now());
+    // the gate length is the server's to decide, so take it from the round itself
+    const gate = Number(d.gate) || (Number(d.startsAt) - Number(d.serverNow));
+    if (gate > 0) S.gateSecs = Math.max(1, Math.round(gate / 1000));
     S.round = { rid, startsAt: (Number(d.startsAt) || 0) + skew, host: String(d.host || "") };
     S.rid = rid;
     S.world = makeWorld(rid);
     S.phase = "open";
     S.joined = false; S.bet = null; S.settled = false; S.result = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
-    S.newUnlocks = []; S.entrants = 0; S.clearAt = 0;
+    S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false;
     ghostTrails.clear(); PARTS.length = 0; lastSpark.clear();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
     $("gemLine").hidden = true;
@@ -1590,6 +1723,7 @@
       of: n, pot, gain, betWon,
       best: winner ? winner.dist : 0
     };
+    if (S.joined) recordRun(Math.round((S.death ? S.death.dist : S.dist) / 10));
     exitFocus();
     document.body.classList.remove("hideveil");
     saveProfile();
@@ -1690,7 +1824,7 @@
   function saveProfile() {
     const body = {
       coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail,
-      name: S.name, color: S.color,
+      name: S.name, color: S.color, best: S.best,
       owned: { skins: [...S.owned.skins], tails: [...S.owned.tails] }
     };
     try { localStorage.setItem("cr.profile", JSON.stringify(body)); } catch (e) {}
@@ -1702,6 +1836,7 @@
     // coins are money now, so the stored balance wins rather than the larger of the two
     if (typeof p.coins === "number") S.coins = Math.max(0, Math.floor(p.coins));
     if (typeof p.gems === "number") S.gems = Math.max(0, Math.floor(p.gems));
+    if (typeof p.best === "number") S.best = Math.max(S.best, Math.floor(p.best));
     if (typeof p.name === "string" && !S.name) S.name = p.name.slice(0, 14);
     if (COLORS.includes(p.color)) S.color = p.color;
     if (p.owned && typeof p.owned === "object") {
@@ -1741,8 +1876,47 @@
       if (snap.exists) applyProfile(snap.data(), true);
       else saveProfile();
       refreshIdentity();
+      watchBoard();
       paintVeil();
     } catch (e) { S.db = null; S.profileRef = null; }
+  }
+
+  /* ---------- leaderboard ----------
+     One shared document holding the top ten, rather than a query, so it works
+     the same on both hosts. Only signed-in players are listed. */
+  function watchBoard() {
+    if (!S.db) return;
+    S.db.doc("board/top").onSnapshot(snap => {
+      const rows = snap.exists && Array.isArray(snap.data().rows) ? snap.data().rows : [];
+      S.board = rows.filter(r => r && typeof r.best === "number").slice(0, 10);
+      paintRail();
+    }, () => {});
+  }
+  async function postRecord(metres) {
+    if (!S.db || !S.uid || !S.canBuy) return;
+    try {
+      const ref = S.db.doc("board/top");
+      const snap = await ref.get();
+      const rows = (snap.exists && Array.isArray(snap.data().rows) ? snap.data().rows : [])
+        .filter(r => r && typeof r.best === "number" && typeof r.uid === "string");
+      const mine = rows.find(r => r.uid === S.uid);
+      if (mine) {
+        if (metres <= mine.best) return;
+        mine.best = metres; mine.name = S.name || "pilot"; mine.at = Date.now();
+      } else {
+        rows.push({ uid: S.uid, name: S.name || "pilot", best: metres, at: Date.now() });
+      }
+      rows.sort((a, b) => b.best - a.best);
+      await ref.set({ rows: rows.slice(0, 10) });
+    } catch (e) {}
+  }
+  function recordRun(metres) {
+    if (S.practice || !metres) return;
+    if (metres <= (S.best || 0)) return;
+    S.best = metres;
+    S.newRecord = true;
+    saveProfile();
+    postRecord(metres);
   }
 
   /* ---------- presence ---------- */
@@ -1792,7 +1966,8 @@
     ctx.setTransform(scale, 0, 0, scale, offX, offY);
     ctx.save();
 
-    const wd = S.world, dist = S.dist;
+    const demo = demoMode();
+    const wd = S.world, dist = demo ? demoDistAt(now) : S.dist;
     // everything the canvas can show, in logical units — wider than the
     // playfield on a wide screen, taller on a narrow one
     const x0 = -offX / scale, x1 = (cv.width - offX) / scale;
@@ -1920,6 +2095,8 @@
     ctx.globalAlpha = 1;
 
     drawParticles(ctx, dist, now);
+
+    if (demo) { drawDemo(ctx, dist, now); ctx.restore(); return; }
 
     // other pilots
     const seen = new Set();
@@ -2059,12 +2236,29 @@
       if (ref) ref.set({ rid: "", startsAt: 0, serverNow: Date.now(), host: "" }).catch(() => {});
     }
 
+    const dt = lastStepAt ? Math.min(0.05, (now - lastStepAt) / 1000) : 0;
+    lastStepAt = now;
+    if (stickVec && (S.phase === "racing" || S.phase === "open")) {
+      S.cx = Math.max(0, Math.min(W, S.cx + stickVec.x * 640 * dt));
+      S.cy = Math.max(0, Math.min(H, S.cy + stickVec.y * 640 * dt));
+      S.inside = true;
+    }
+    const wantStick = TOUCH && (S.phase === "racing" || (S.phase === "open" && S.joined));
+    if (stickEl.hidden === wantStick) stickEl.hidden = !wantStick;
+    // the pilot page needs the rail, so it is not "lobby" even when idle
+    document.body.classList.toggle("lobby",
+      demoMode() && !document.body.classList.contains("settings"));
+
     const busyNow = S.phase === "open" || S.phase === "racing";
     if (busyNow !== lastBusy) { lastBusy = busyNow; pushLobbyPresence(); }
     const focusNow = document.body.classList.contains("focus");
     if (focusNow !== lastFocus) { lastFocus = focusNow; syncMusic(); }
     if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
-    if (now - lastRail > 140) { lastRail = now; paintRail(); drawPreviews(now); tickVeil(); }
+    if (now - lastRail > 140) {
+      lastRail = now;
+      paintRail(); drawPreviews(now); tickVeil();
+      $("pingTag").textContent = S.ping === null ? "" : "ping " + S.ping + " ms";
+    }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
   }
   function frame(now) {
@@ -2076,18 +2270,63 @@
   }
   setInterval(() => step(performance.now()), 250);
 
+  /* ---------- the lobby is the game, running ----------
+     Idle at the picker, the channel keeps scrolling behind the veil with a few
+     cursors flying it, so the first thing you see is the game rather than a
+     still frame. Nobody here is real and nothing is at stake. */
+  const DEMO = [];
+  const demoMode = () => !S.table && !S.practice && S.phase === "idle";
+  const demoDistAt = now => 400 + ((now / 1000) * 130) % 7000;
+  function demoInit() {
+    if (DEMO.length) return;
+    const tails = TAILS.filter(t => t.color);
+    for (let i = 0; i < 5; i++) {
+      DEMO.push({
+        skin: SKINS[(i * 3 + 2) % SKINS.length].id,
+        tail: tails[(i * 2 + 1) % tails.length].id,
+        color: COLORS[(i * 3) % COLORS.length],
+        ph: i * 1.7,
+        sp: 0.6 + (i % 3) * 0.3,
+        amp: 0.25 + (i % 4) * 0.16,
+        row: 0.18 + i * 0.15,
+        trail: []
+      });
+    }
+  }
+  function drawDemo(c, dist, now) {
+    demoInit();
+    for (const b of DEMO) {
+      const cy = b.row * H;
+      const u = dist + H - cy;
+      const x = centerX(u, S.world) + Math.sin((now / 900) * b.sp + b.ph) * halfW(u) * b.amp;
+      const last = b.trail[b.trail.length - 1];
+      if (!last || Math.abs(last[0] - x) > 0.4 || Math.abs(last[1] - cy) > 0.4) b.trail.push([x, cy]);
+      if (b.trail.length > 26) b.trail.shift();
+      const tl = tailById(b.tail);
+      c.globalAlpha = 0.8;
+      if (tl.color) drawTail(c, tl, b.trail, b.color, now);
+      c.globalAlpha = 1;
+      skinById(b.skin).draw(c, x, cy, b.color, now);
+    }
+  }
+
   /* ---------- lobby music ----------
      Browsers refuse to start audio before the viewer has interacted, so the
      first click or key press is what actually begins playback. It pauses while
      you are racing and picks up again back in the lobby. */
-  let music = null, musicOn = true;
+  let music = null, musicOn = true, musicVol = 0.32;
   function ensureMusic() {
     if (music) return music;
     music = new Audio("lobby-music.mp3");
     music.loop = true;
-    music.volume = 0.32;
+    music.volume = musicVol;
     music.preload = "auto";
     return music;
+  }
+  function setVolume(v) {
+    musicVol = Math.min(1, Math.max(0, v));
+    if (music) music.volume = musicVol;
+    try { localStorage.setItem("cr.vol", String(Math.round(musicVol * 100))); } catch (e) {}
   }
   function syncMusic() {
     const wanted = musicOn && !document.body.classList.contains("focus");
@@ -2108,8 +2347,13 @@
     syncMusic();
   }
   $("musicBtn").addEventListener("click", () => setMusic(!musicOn));
-  ["pointerdown", "keydown"].forEach(ev =>
-    window.addEventListener(ev, syncMusic, { once: false, passive: true }));
+  $("musicVol").addEventListener("input", e => {
+    setVolume(Number(e.target.value) / 100);
+    if (musicOn) syncMusic();
+  });
+  // try straight away; browsers that refuse until a gesture are covered below
+  ["pointerdown", "keydown", "touchstart"].forEach(ev =>
+    window.addEventListener(ev, syncMusic, { passive: true }));
 
   /* ---------- pointer tail across the interface ---------- */
   const fx = $("fx"), fxc = fx.getContext("2d");
@@ -2139,7 +2383,7 @@
   function drawFx(now) {
     if (fx.width !== Math.max(1, Math.round(window.innerWidth * dprOf()))) fxSize();
     fxc.clearRect(0, 0, window.innerWidth, window.innerHeight);
-    const tail = tailById(S.tail);
+    const tail = effTail();
     while (fxPts.length && now - fxPts[0][2] > 420) fxPts.shift();   // retract when idle
     if (tail.color && fxPts.length > 1) drawTail(fxc, tail, fxPts, S.color, now);
 
@@ -2204,7 +2448,7 @@
             '<p>Watching this one. Back a pilot from the rail while they are still flying.</p>');
           return;
         }
-        veil.innerHTML = wrapHTML('<div class="count">' + (secs === 0 ? "GO" : secs) + '</div>' +
+        veil.innerHTML = wrapHTML(lightsHTML(secs) +
           '<p>' + (S.joined ? "Put your cursor in the channel." : "Watching this one.") + '</p>');
         return;
       }
@@ -2225,6 +2469,7 @@
         '<p>' + (S.joined
           ? "You are in. The channel opens when the clock hits zero."
           : "Confirm a seat before the clock runs out, or sit this one out and bet on a pilot from the rail.") + '</p>' +
+        '<div id="accountSlot"></div>' +
         noteLine());
       return;
     }
@@ -2266,6 +2511,7 @@
             '<span>' + (S.runCoins === 1 ? "gate cleared" : "gates cleared") + '</span></div>'
           : '') +
         unlocked +
+        (S.newRecord ? '<div class="record">new personal record &middot; ' + S.best + ' m</div>' : '') +
         '<p>' + detail + '</p>' +
         walletLine() +
         '<div class="btnrow">' +
@@ -2293,7 +2539,7 @@
         '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
         '<div><b>The channel narrows and speeds up</b> the further you get.</div>' +
         '<div><b>Last pointer still inside takes the whole pot.</b></div>' +
-        '<div><b>Opening a race starts a 30 second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
+        '<div><b>Opening a race starts a ' + S.gateSecs + ' second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
         '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
         '<div><b>Practice runs pay nothing</b> &mdash; they are for learning the channel.</div>' +
@@ -2314,9 +2560,20 @@
       noteLine());
   }
 
+  /* three lamps counting down: red at 3, amber at 2, green at 1, then go */
+  function lightsHTML(secs) {
+    const lamps = [
+      { on: secs === 3, cls: "red" },
+      { on: secs === 2, cls: "amber" },
+      { on: secs <= 1, cls: "green" }
+    ].map(l => '<span class="lamp ' + l.cls + (l.on ? " on" : "") + '"></span>').join("");
+    return '<div class="lights">' + lamps + '</div>' +
+      '<div class="count small">' + (secs <= 0 ? "GO" : secs) + '</div>';
+  }
+
   function paintTables() {
     const counts = tableCounts();
-    const here = S.lobbyPeers.length;
+    const here = peopleHere();
     const cards = TABLES.map(id => {
       const c = counts[id] || { n: 0, busy: false };
       const full = c.n >= TABLE_CAP;
@@ -2330,7 +2587,7 @@
     veil.innerHTML = wrapHTML(
       '<h1>CURSOR<br><span class="race">RACE</span></h1>' +
       '<p>Pick a table. Each one runs its own race on its own channel, up to ' +
-        TABLE_CAP + ' pilots. Opening a race there starts a 30 second gate.</p>' +
+        TABLE_CAP + ' pilots. Opening a race there starts a ' + S.gateSecs + ' second gate.</p>' +
       '<div class="tables">' + cards + '</div>' +
       walletLine() +
       '<div class="verdict">' + here + (here === 1 ? " pilot" : " pilots") + ' on the site</div>' +
@@ -2338,6 +2595,7 @@
         '<button class="go ghost" data-act="practice">Practice run</button>' +
         '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
       '</div>' +
+      '<div id="accountSlot"></div>' +
       noteLine());
   }
 
@@ -2349,6 +2607,12 @@
     if (!el) { paintVeil(); return; }
     const want = withinWarmup() ? (secs === 0 ? "GO" : String(secs)) : String(secs);
     if (el.textContent !== want) el.textContent = want;
+    const lamps = veil.querySelectorAll(".lamp");
+    if (lamps.length === 3) {                 // the lights change every second
+      lamps[0].classList.toggle("on", secs === 3);
+      lamps[1].classList.toggle("on", secs === 2);
+      lamps[2].classList.toggle("on", secs <= 1);
+    }
     if (withinWarmup() && !veil.classList.contains("thin")) paintVeil();
   }
 
@@ -2369,6 +2633,9 @@
   $("toLobby").addEventListener("click", () => {
     document.body.classList.remove("hideveil");
     document.body.classList.remove("settings");
+    S.buying = null;                           // the preview does not leave the page
+    paintSkins();
+    updateAppCursor();
     requestAnimationFrame(fit);
     paintVeil();
   });
@@ -2453,6 +2720,17 @@
           '<span class="val"><b>' + p.wins + '</b> won</span></div>');
       title = "On the channel"; count = lobby.length + (lobby.length === 1 ? " pilot" : " pilots");
     }
+    $("myBest").textContent = S.best ? "you " + S.best + " m" : "";
+    const ladder = S.board.length
+      ? S.board.map((r, i) =>
+          '<div class="row' + (r.uid === S.uid ? " me" : "") + '">' +
+            '<span class="rank">' + (i + 1) + '</span>' +
+            '<span class="nm">' + esc(String(r.name || "pilot")) + '</span>' +
+            '<span class="val"><b>' + Math.round(r.best) + '</b> m</span>' +
+          '</div>').join("")
+      : '<div class="empty">No records yet. Sign in and set one.</div>';
+    if ($("ladder").dataset.h !== ladder) { $("ladder").dataset.h = ladder; $("ladder").innerHTML = ladder; }
+
     $("boardTitle").textContent = title;
     $("boardCount").textContent = count;
     const html = rows.join("") || '<div class="empty">Nobody here yet.</div>';
@@ -2478,6 +2756,9 @@
       const c = localStorage.getItem("cr.color");
       if (c && COLORS.includes(c)) S.color = c;
       musicOn = localStorage.getItem("cr.music") !== "off";
+      const raw = localStorage.getItem("cr.vol");
+      const v = raw === null ? NaN : Number(raw);   // absent must not read as silence
+      if (isFinite(v) && v >= 0 && v <= 100) musicVol = v / 100;
     } catch (e) {}
   }
   function saveLocal() {
@@ -2605,9 +2886,10 @@
       const b = e.target.closest(".skin");
       if (!b) return;
       const item = (kind === "skins" ? skinById : tailById)(b.dataset.id);
-      if (!owns(item, kind)) {                 // arm it, the till does the rest
+      if (!owns(item, kind)) {                 // wear it here; the till does the rest
         S.buying = { kind, id: item.id };
         paintSkins();
+        updateAppCursor();
         return;
       }
       S.buying = null;
@@ -2625,7 +2907,7 @@
   /* the chosen head doubles as the page's own mouse cursor */
   let cursorUrl = "";
   function updateAppCursor() {
-    const head = skinById(S.skin);
+    const head = effSkin();
     const c = document.createElement("canvas");
     c.width = c.height = 40;
     const g = c.getContext("2d");
@@ -2665,6 +2947,22 @@
       if (!S.table) paintVeil();
       paintRail();
     }, () => { S.lobbyPeers = []; setNet(false, "solo channel"); });
+
+    /* the room echoes our own messages back, so a timestamped one measures the
+       round trip without needing any ping support from the platform */
+    room.on("ping", msg => {
+      if (!msg.sameTab || !msg.data) return;
+      const t = Number(msg.data.t);
+      if (isFinite(t)) S.ping = Math.max(0, Math.round(performance.now() - t));
+    }, () => {});
+    const beat = () => {
+      if (S.room && S.room.connected()) {
+        S.room.emit("ping", { t: Math.round(performance.now()) }).catch(() => {});
+      }
+    };
+    beat();
+    setInterval(beat, 4000);
+
     pushLobbyPresence();
   }
 
@@ -2686,7 +2984,9 @@
     nameInput.value = S.name;
     paintSwatches();
     paintSkins();
+    $("musicVol").value = String(Math.round(musicVol * 100));
     paintMusic();
+    syncMusic();                 // starts now where the browser allows it
     updateAppCursor();
     fxSize();
     fit();

@@ -35,7 +35,16 @@
 
   fetch("/api/session", { credentials: "same-origin" })
     .then(function (r) { return r.json(); })
-    .then(render)
+    .then(function (s) {
+      render(s);
+      // the lobby offers a slot under its buttons; sit there when it exists,
+      // otherwise stay in the corner
+      setInterval(function () {
+        var slot = document.getElementById("accountSlot");
+        if (slot && el.parentNode !== slot) { slot.appendChild(el); el.classList.add("inline"); }
+        else if (!slot && el.parentNode !== document.body) { document.body.appendChild(el); el.classList.remove("inline"); }
+      }, 400);
+    })
     .catch(function () { el.remove(); });
 
   if (location.search.indexOf("signin=failed") >= 0) {

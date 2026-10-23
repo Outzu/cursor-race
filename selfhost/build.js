@@ -20,6 +20,7 @@ const ACCOUNT_CSS =
   'z-index:70;display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;border-radius:999px;' +
   'background:#0c1324;box-shadow:inset 0 0 0 1px #27375a;font:12px "Azeret Mono",ui-monospace,monospace;color:#8b99bb}' +
   'body.focus #account,body.settings #account{display:none}' +
+  '#account.inline{position:static;margin:2px auto 0}' +
   '#account img{width:22px;height:22px;border-radius:50%;display:block}' +
   '#account .dot{width:9px;height:9px;border-radius:50%;background:#4d5c80;margin-left:4px}' +
   '#account .nm{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef2fb}' +

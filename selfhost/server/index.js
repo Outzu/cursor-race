@@ -210,6 +210,22 @@ function writeFor(uid, p, data, mode) {
   }
   if (/^live\//.test(p)) return "not_permitted";
 
+  if (p === "board/top") {
+    if (!store.get("users/" + uid)) return "not_permitted";     // signed-in players only
+    const rows = (Array.isArray(data.rows) ? data.rows : [])
+      .filter(r => r && typeof r.uid === "string" && typeof r.best === "number" && isFinite(r.best))
+      .map(r => ({
+        uid: r.uid.slice(0, 40),
+        name: String(r.name || "pilot").slice(0, 14),
+        best: Math.max(0, Math.round(r.best))
+      }))
+      .sort((a, b) => b.best - a.best)
+      .slice(0, 10);
+    store.set(p, { rows, updated: Date.now() });
+    return null;
+  }
+  if (p.startsWith("board/")) return "not_permitted";
+
   const m = /^data\/users\/([^/]+)\//.exec(p);
   if (m) {
     if (m[1] !== uid) return "not_permitted";
@@ -247,7 +263,7 @@ function openRound(table, rid, host) {
     bets: new Map()        // uid -> { on, amt, paid }
   };
   rounds.set(table, r);
-  store.set("live/" + table, { rid, startsAt: r.startsAt, serverNow: now, host });
+  store.set("live/" + table, { rid, startsAt: r.startsAt, serverNow: now, host, gate: G.JOIN_WINDOW });
   console.log("%s: race %s opens, gate shuts in %ds", table, rid, G.JOIN_WINDOW / 1000);
 }
 
