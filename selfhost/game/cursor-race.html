@@ -1570,17 +1570,33 @@
      The delay is what buys the smoothing: there is almost always a later
      sample to move towards. Only the picture is interpolated - nothing here
      decides who wins. */
-  const GHOST_LAG = 110;
+  const GHOST_LAG_MIN = 70, GHOST_LAG_MAX = 260;
   const ghostPaths = new Map();
 
   function ghostAt(peer, x, y, now) {
-    let buf = ghostPaths.get(peer);
-    if (!buf) { buf = [{ t: now, x, y }]; ghostPaths.set(peer, buf); }
-    const last = buf[buf.length - 1];
-    if (last.x !== x || last.y !== y) buf.push({ t: now, x, y });
-    if (buf.length > 20) buf.splice(0, buf.length - 20);
+    let g = ghostPaths.get(peer);
+    if (!g) {
+      g = { buf: [{ t: now, x, y }], gap: 60, jit: 15, last: now };
+      ghostPaths.set(peer, g);
+    }
+    const buf = g.buf;
+    const tail = buf[buf.length - 1];
+    if (tail.x !== x || tail.y !== y) {
+      const d = now - g.last;                 // how long that update took to turn up
+      g.last = now;
+      if (d > 0 && d < 2000) {
+        g.gap += (d - g.gap) * 0.12;
+        g.jit += (Math.abs(d - g.gap) - g.jit) * 0.12;
+      }
+      buf.push({ t: now, x, y });
+      if (buf.length > 24) buf.splice(0, buf.length - 24);
+    }
 
-    const at = now - GHOST_LAG;
+    /* The buffer has to reach back far enough to cover the gap between updates
+       and however much that gap wanders, or a late packet leaves the cursor
+       standing still. A steady link earns a tighter one. */
+    const lag = Math.max(GHOST_LAG_MIN, Math.min(GHOST_LAG_MAX, g.gap + g.jit * 2.5 + 25));
+    const at = now - lag;
     while (buf.length > 2 && buf[1].t <= at) buf.shift();
     const a = buf[0], b = buf[1];
     if (!b || at <= a.t) return [a.x, a.y];
@@ -1588,6 +1604,7 @@
     const k = (at - a.t) / (b.t - a.t);
     return [a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k];
   }
+
   function enterFocus(fromGesture) {
     if (document.body.classList.contains("focus")) return;
     document.body.classList.add("focus");

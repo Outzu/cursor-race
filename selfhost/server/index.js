@@ -140,7 +140,7 @@ setInterval(() => {
     }
   }
   dirtyRooms.clear();
-}, 60);
+}, 40);   // a touch tighter than the 50ms the page pushes at, so nothing waits
 
 function joinRoom(peerId, name) {
   let set = rooms.get(name);

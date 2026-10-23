@@ -3,6 +3,7 @@
    Redis or Firestore by keeping the same five methods plus onChange. */
 
 const fs = require("fs");
+const fsp = require("fs/promises");
 const path = require("path");
 
 class Store {
@@ -54,18 +55,31 @@ class Store {
     this.save();
   }
 
+  /* The flush used to be synchronous, which stopped the whole server while the
+     disk caught up - a few hundred microseconds at first, but 8ms once a few
+     thousand players have wallets, and that showed up as a latency spike for
+     everyone mid-race. The write is off the event loop now. Serialising is
+     still synchronous; if that ever starts to hurt, the store has outgrown one
+     JSON file and wants a real database behind the same five methods. */
   save() {
     if (this.timer) return;
-    this.timer = setTimeout(() => {
-      this.timer = null;
-      try {
-        fs.mkdirSync(path.dirname(this.file), { recursive: true });
-        fs.writeFileSync(this.file + ".tmp", JSON.stringify(this.docs));
-        fs.renameSync(this.file + ".tmp", this.file);
-      } catch (e) {
-        console.error("store save failed:", e.message);
-      }
-    }, 250);
+    this.timer = setTimeout(() => { this.timer = null; this.flush(); }, 250);
+  }
+
+  async flush() {
+    if (this.writing) { this.pending = true; return; }   // one writer at a time
+    this.writing = true;
+    try {
+      const body = JSON.stringify(this.docs);
+      await fsp.mkdir(path.dirname(this.file), { recursive: true });
+      await fsp.writeFile(this.file + ".tmp", body);
+      await fsp.rename(this.file + ".tmp", this.file);
+    } catch (e) {
+      console.error("store save failed:", e.message);
+    } finally {
+      this.writing = false;
+      if (this.pending) { this.pending = false; this.save(); }
+    }
   }
 }
 
