@@ -300,7 +300,50 @@
   body.settings .skin .lbl { font-size: 10px; }
   body.settings .skin .lock { width: 15px; height: 15px; top: 5px; right: 5px; }
   body.settings .purse b { font-size: 34px; }
+  /* roamers draw above the veil's dimming so they read as solid colour, and
+     below the wrap so they pass behind the title and buttons */
+  #zoom { position: fixed; inset: 0; z-index: 21; pointer-events: none; }
+  body:not(.lobby) #zoom { display: none; }
+
+  #ladderHud {
+    position: fixed;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    right: calc(max(14px, env(safe-area-inset-right, 0px)) + 52px);
+    z-index: 73;
+    width: 196px;
+    padding: 10px 12px 11px;
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--field) 92%, transparent);
+    box-shadow: inset 0 0 0 1px var(--wall-line);
+  }
+  #ladderHud h3 {
+    margin: 0 0 8px;
+    font-family: var(--data);
+    font-size: 9px;
+    font-weight: 600;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--faint);
+  }
+  #ladderHud .lrow {
+    display: grid;
+    grid-template-columns: 14px 1fr auto;
+    gap: 8px;
+    align-items: baseline;
+    font-family: var(--data);
+    font-size: 11px;
+    color: var(--dim);
+    padding: 2px 0;
+  }
+  #ladderHud .lrow.me { color: var(--aqua); }
+  #ladderHud .lrow i { font-style: normal; color: var(--faint); }
+  #ladderHud .lrow span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #ladderHud .lrow b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+  #ladderHud .none { font-family: var(--data); font-size: 10px; color: var(--faint); line-height: 1.5; }
+
   .wrap {
+    position: relative;
+    z-index: 22;
     width: min(1000px, 94vw);
     display: grid;
     justify-items: center;
@@ -632,6 +675,9 @@
   }
   .skin.locked canvas { opacity: .72; }
   .skin.previewing { border-color: var(--aqua); }
+  .skin.afford { opacity: .78; }
+  .skin.afford .lock { color: #ffc33d; filter: drop-shadow(0 0 5px rgba(255, 195, 61, .65)); }
+  .skin.afford .lbl { color: #ffc33d; }
   .skin.armed .lock { color: var(--amber); }
   .skin.locked .lbl::before {
     content: "";
@@ -817,6 +863,8 @@
 </div>
 
 <div class="veil" id="veil"></div>
+<canvas id="zoom"></canvas>
+<div id="ladderHud" hidden></div>
 
 <div id="musicCtl">
   <button id="musicBtn" aria-pressed="true" title="Lobby music">
@@ -2070,20 +2118,6 @@
     };
     edge(left); edge(right);
 
-    // where the playfield itself ends: past this the run is over, whatever the
-    // screen still shows
-    if (x0 < -1 || x1 > W + 1) {
-      ctx.save();
-      ctx.strokeStyle = "rgba(255,84,112,.3)";
-      ctx.lineWidth = 2;
-      ctx.setLineDash([12, 12]);
-      ctx.beginPath();
-      ctx.moveTo(0, y0); ctx.lineTo(0, y1);
-      ctx.moveTo(W, y0); ctx.lineTo(W, y1);
-      ctx.stroke();
-      ctx.restore();
-    }
-
     for (const g of gemsNear(uMin - 120, uMax + 120, wd)) {
       if (S.gemsTaken.has(g.id)) continue;
       const ph = gemShow(g, dist);
@@ -2274,7 +2308,7 @@
     if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
     if (now - lastRail > 140) {
       lastRail = now;
-      paintRail(); drawPreviews(now); tickVeil();
+      paintRail(); drawPreviews(now); tickVeil(); paintLadderHud();
       $("pingTag").textContent = S.ping === null ? "" : "ping " + S.ping + " ms";
     }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
@@ -2284,6 +2318,7 @@
     draw(now);
     if (document.body.classList.contains("focus")) clearFx();
     else drawFx(now);
+    if (demoMode()) drawZoom(now); else clearZoom();
     requestAnimationFrame(frame);
   }
   setInterval(() => step(performance.now()), 250);
@@ -2326,6 +2361,78 @@
       c.globalAlpha = 1;
       skinById(b.skin).draw(c, x, cy, b.color, now);
     }
+  }
+
+  /* Fast roamers across the home screen. They draw on their own canvas above
+     the veil's dimming, so they keep their full colour, and below the wrap, so
+     they pass behind the title and buttons. */
+  const ZOOM = [];
+  let zoomC = null, zoomX = null, zoomLast = 0;
+  function zoomSize() {
+    const d = dprOf();
+    zoomC.width = Math.max(1, Math.round(window.innerWidth * d));
+    zoomC.height = Math.max(1, Math.round(window.innerHeight * d));
+    zoomX.setTransform(d, 0, 0, d, 0, 0);
+  }
+  function zoomInit() {
+    if (ZOOM.length) return;
+    const tails = TAILS.filter(t => t.color);
+    for (let i = 0; i < 7; i++) {
+      const a = Math.random() * TAU, sp = 330 + Math.random() * 430;
+      ZOOM.push({
+        x: Math.random() * window.innerWidth,
+        y: Math.random() * window.innerHeight,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        skin: SKINS[Math.floor(Math.random() * SKINS.length)].id,
+        tail: tails[Math.floor(Math.random() * tails.length)].id,
+        color: COLORS[Math.floor(Math.random() * COLORS.length)],
+        trail: []
+      });
+    }
+  }
+  function drawZoom(now) {
+    if (!zoomC) return;
+    if (zoomC.width !== Math.max(1, Math.round(window.innerWidth * dprOf()))) zoomSize();
+    const w = window.innerWidth, h = window.innerHeight;
+    zoomX.clearRect(0, 0, w, h);
+    zoomInit();
+    const dt = zoomLast ? Math.min(0.05, (now - zoomLast) / 1000) : 0;
+    zoomLast = now;
+    for (const r of ZOOM) {
+      r.x += r.vx * dt;
+      r.y += r.vy * dt;
+      // wrap around, cutting the trail so it does not streak back across
+      if (r.x < -60) { r.x = w + 60; r.trail.length = 0; }
+      else if (r.x > w + 60) { r.x = -60; r.trail.length = 0; }
+      if (r.y < -60) { r.y = h + 60; r.trail.length = 0; }
+      else if (r.y > h + 60) { r.y = -60; r.trail.length = 0; }
+      r.trail.push([r.x, r.y]);
+      if (r.trail.length > 22) r.trail.shift();
+      const tl = tailById(r.tail);
+      if (tl.color) drawTail(zoomX, tl, r.trail, r.color, now);
+      skinById(r.skin).draw(zoomX, r.x, r.y, r.color, now);
+    }
+  }
+  function clearZoom() {
+    if (!zoomC || !ZOOM.length) return;
+    ZOOM.length = 0;
+    zoomLast = 0;
+    zoomX.clearRect(0, 0, window.innerWidth, window.innerHeight);
+  }
+
+  function paintLadderHud() {
+    const hud = $("ladderHud");
+    const show = demoMode();
+    if (hud.hidden === show) hud.hidden = !show;
+    if (!show) return;
+    const rows = S.board.slice(0, 5);
+    const html = '<h3>Leaderboard</h3>' + (rows.length
+      ? rows.map((r, i) =>
+          '<div class="lrow' + (r.uid === S.uid ? " me" : "") + '">' +
+            '<i>' + (i + 1) + '</i><span>' + esc(String(r.name || "pilot")) + '</span>' +
+            '<b>' + Math.round(r.best) + ' m</b></div>').join("")
+      : '<div class="none">No records yet. Sign in and set one.</div>');
+    if (hud.dataset.h !== html) { hud.dataset.h = html; hud.innerHTML = html; }
   }
 
   /* ---------- lobby music ----------
@@ -2823,8 +2930,10 @@
     host.innerHTML = items.map(s => {
       const have = owns(s, kind);
       const armed = S.buying && S.buying.kind === kind && S.buying.id === s.id;
-      return '<button class="skin' + (have ? "" : " locked") + (armed ? " armed" : "") +
-        '" data-id="' + s.id + '"' +
+      // gold lock = you can afford this one today
+      const afford = !have && s.cost <= (kind === "skins" ? S.coins : S.gems);
+      return '<button class="skin' + (have ? "" : " locked") + (afford ? " afford" : "") +
+        (armed ? " armed" : "") + '" data-id="' + s.id + '"' +
         (have ? ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"'
               : ' aria-label="' + esc(s.name) + ', costs ' + s.cost + '"') +
         '><canvas width="136" height="136"></canvas>' +
@@ -3017,6 +3126,10 @@
     paintMusic();
     syncMusic();                 // starts now where the browser allows it
     updateAppCursor();
+    zoomC = $("zoom");
+    zoomX = zoomC.getContext("2d");
+    zoomSize();
+    window.addEventListener("resize", zoomSize);
     fxSize();
     fit();
     paintVeil();
