@@ -497,8 +497,43 @@
     border: 1px solid transparent;
     border-radius: 3px;
   }
+  .skin { position: relative; }
   .skin[aria-pressed="true"] { border-color: var(--aqua); background: color-mix(in srgb, var(--aqua) 12%, transparent); }
-  .skin.locked { opacity: .4; cursor: default; }
+  .skin.locked { opacity: .55; }
+  .skin.locked canvas { opacity: .35; }
+  .skin.armed { border-color: var(--amber); background: color-mix(in srgb, var(--amber) 14%, transparent); opacity: 1; }
+  .skin .lock {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: 15px; height: 15px;
+    transform: translate(-50%, -62%);
+    color: var(--dim);
+    pointer-events: none;
+  }
+  .skin.armed .lock { color: var(--amber); }
+  .skin.locked .lbl::before {
+    content: "";
+    display: inline-block;
+    width: 6px; height: 6px;
+    margin-right: 4px;
+    border-radius: 50%;
+    background: currentColor;
+    vertical-align: middle;
+    opacity: .6;
+  }
+  button.buy {
+    width: 100%;
+    margin-top: 2px;
+    padding: 7px 10px;
+    background: var(--amber);
+    color: var(--void);
+    font-family: var(--display);
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  button.buy:hover { background: #ffc15c; }
   .skin canvas { display: block; width: 34px; height: 34px; }
   .skin .lbl {
     font-family: var(--data);
@@ -1004,6 +1039,8 @@
                color: col => withA(col, .4) } }
   ];
   const tailById = id => TAILS.find(t => t.id === id) || TAILS[0];
+  /* free items are everyone's; the rest are bought and remembered */
+  const owns = (item, kind) => !!item && (item.cost === 0 || S.owned[kind].has(item.id));
 
   function drawTail(c, tail, pts, col, now) {
     if (!tail || !tail.color || !pts || pts.length < 2) return;
@@ -1094,6 +1131,9 @@
     runGems: 0,
     gemsTaken: new Map(),
     gemPending: new Set(),
+    owned: { skins: new Set(), tails: new Set() },
+    buying: null,
+    canBuy: false,
     gatesPassed: 0,
     wins: 0,
     peers: [],          // everyone at my table
@@ -1486,12 +1526,10 @@
   function awardGates(u) {
     const cleared = Math.max(0, Math.floor((u - GATE_START - GATE_TH) / GATE_SPACE) + 1);
     if (cleared <= S.gatesPassed) return;
-    const before = S.coins;
     const gained = cleared - S.gatesPassed;
     S.gatesPassed = cleared;
     S.runCoins += gained;
-    S.coins += gained;
-    for (const s of SKINS) if (s.cost > before && s.cost <= S.coins) S.newUnlocks.push(s.name);
+    if (!S.practice) S.coins += gained;        // practice pays nothing
     $("coinNow").textContent = String(S.runCoins);
     $("coinWord").textContent = S.runCoins === 1 ? "coin" : "coins";
     pingUntil = performance.now() + 160;
@@ -1527,18 +1565,21 @@
       }
     }
     if (!mine) return;
-    const before = S.gems;
-    S.gems += 1;
     S.runGems += 1;
-    for (const t of TAILS) if (t.cost > before && t.cost <= S.gems) S.newUnlocks.push(t.name + " tail");
     $("gemNow").textContent = String(S.runGems);
     $("gemLine").hidden = false;
+    if (S.practice) return;                    // practice pays nothing
+    S.gems += 1;
     saveProfile();
   }
 
   /* ---------- profile ---------- */
   function saveProfile() {
-    const body = { coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail, name: S.name, color: S.color };
+    const body = {
+      coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail,
+      name: S.name, color: S.color,
+      owned: { skins: [...S.owned.skins], tails: [...S.owned.tails] }
+    };
     try { localStorage.setItem("cr.profile", JSON.stringify(body)); } catch (e) {}
     if (S.profileRef) S.profileRef.set(body).catch(() => {});
     paintRail();
@@ -1550,10 +1591,18 @@
     if (typeof p.gems === "number") S.gems = Math.max(0, Math.floor(p.gems));
     if (typeof p.name === "string" && !S.name) S.name = p.name.slice(0, 14);
     if (COLORS.includes(p.color)) S.color = p.color;
+    if (p.owned && typeof p.owned === "object") {
+      for (const id of Array.isArray(p.owned.skins) ? p.owned.skins : []) {
+        if (SKINS.some(s => s.id === id)) S.owned.skins.add(id);
+      }
+      for (const id of Array.isArray(p.owned.tails) ? p.owned.tails : []) {
+        if (TAILS.some(t => t.id === id)) S.owned.tails.add(id);
+      }
+    }
     const sk = skinById(p.skin);
-    if (sk.cost <= S.coins) S.skin = sk.id;
+    if (owns(sk, "skins")) S.skin = sk.id;
     const tl = tailById(p.tail);
-    if (tl.cost <= S.gems) S.tail = tl.id;
+    if (owns(tl, "tails")) S.tail = tl.id;
   }
   function refreshIdentity() {
     nameInput.value = S.name;
@@ -1569,6 +1618,8 @@
       if (!(window.claude && window.claude.use)) return;
       const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
       if (!db || !user) return;
+      const me = await user.me().catch(() => null);
+      S.canBuy = !!(me && me.guest !== true);   // a signed-in account, not a guest
       const uid = await user.id();
       if (!uid) return;
       S.db = db; S.uid = uid; S.me = uid;
@@ -2037,7 +2088,7 @@
       if (S.practice) {
         head = String(m);
         verdict = (S.death ? esc(S.death.why) : "out") + " at " + m + " m";
-        detail = "Practice run, nothing staked. Coins still count.";
+        detail = "Practice run. Nothing staked, and nothing earned.";
       } else if (r && r.iWon) {
         head = "LAST<br><span class='race'>POINTER</span>";
         verdict = "you took the pot";
@@ -2066,11 +2117,13 @@
         '<p>' + detail + '</p>' +
         walletLine() +
         '<div class="btnrow">' +
-          (canOpenRace()
-            ? '<button class="go" data-act="open">Open a race</button>'
-            : '<button class="go" disabled>Waiting for a second pilot</button>') +
+          (S.table
+            ? (canOpenRace()
+                ? '<button class="go" data-act="open">Open a race</button>'
+                : '<button class="go" disabled>Waiting for a second pilot</button>')
+            : '<button class="go" data-act="lobby">Back to lobby</button>') +
           '<button class="go ghost" data-act="practice">Practice run</button>' +
-          '<button class="go ghost" data-act="leave">Change table</button>' +
+          (S.table ? '<button class="go ghost" data-act="leave">Change table</button>' : '') +
         '</div>' +
         noteLine());
       return;
@@ -2091,6 +2144,7 @@
         '<div><b>Opening a race starts a 30 second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
         '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
+        '<div><b>Practice runs pay nothing</b> &mdash; they are for learning the channel.</div>' +
         '<div><b>Gems appear in the channel</b> &mdash; first cursor to touch one takes it. Gems buy tails.</div>' +
       '</div>' +
       walletLine() +
@@ -2153,6 +2207,7 @@
     if (!b) return;
     const a = b.dataset.act;
     if (a === "leave") { leaveTable(false); return; }
+    if (a === "lobby") { S.practice = false; backToIdle(); return; }
     if (a === "open") openRace();
     else if (a === "join") joinRace();
     else if (a === "practice") practiceRun();
@@ -2295,37 +2350,66 @@
   });
 
   const previews = [];
-  function grid(host, items, chosen, sig, purse, unit) {
+  const LOCK = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true">' +
+    '<path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/>' +
+    '<rect x="4" y="10" width="16" height="11" rx="2" fill="currentColor"/></svg>';
+
+  function grid(host, items, chosen, sig, kind) {
     if (host.dataset.sig === sig) return;
     host.dataset.sig = sig;
     host.innerHTML = items.map(s => {
-      const locked = s.cost > purse;
-      return '<button class="skin' + (locked ? " locked" : "") + '" data-id="' + s.id + '"' +
-        (locked ? ' disabled aria-label="' + esc(s.name) + ', locked, needs ' + s.cost + ' ' + unit + '"'
-                : ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"') +
+      const have = owns(s, kind);
+      const armed = S.buying && S.buying.kind === kind && S.buying.id === s.id;
+      return '<button class="skin' + (have ? "" : " locked") + (armed ? " armed" : "") +
+        '" data-id="' + s.id + '"' +
+        (have ? ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"'
+              : ' aria-label="' + esc(s.name) + ', costs ' + s.cost + '"') +
         '><canvas width="68" height="68"></canvas>' +
-        '<span class="lbl">' + (locked ? s.cost : esc(s.name)) + '</span></button>';
+        (have ? "" : LOCK) +
+        '<span class="lbl">' + (have ? esc(s.name) : s.cost) + '</span></button>';
     }).join("");
     host.querySelectorAll("canvas").forEach((c, i) => previews.push({ c, item: items[i] }));
   }
-  function nextUnlock(items, purse) {
-    const locked = items.filter(s => s.cost > purse);
-    return locked.length ? locked.reduce((a, b) => (b.cost < a.cost ? b : a)) : null;
+
+  /* the hint line under each grid doubles as the till */
+  function tillHTML(kind, purse, unit) {
+    if (!S.buying || S.buying.kind !== kind) {
+      const mine = (kind === "skins" ? SKINS : TAILS).filter(s => owns(s, kind)).length;
+      const all = (kind === "skins" ? SKINS : TAILS).length;
+      return mine >= all ? "you own them all" : "tap a locked one to buy it";
+    }
+    const item = (kind === "skins" ? skinById : tailById)(S.buying.id);
+    if (!S.canBuy) return "sign in with google to buy";
+    if (purse < item.cost) return (item.cost - purse) + " more " + unit + " for " + item.name.toLowerCase();
+    return '<button class="buy" data-buy="' + kind + '">Buy ' + esc(item.name) +
+      ' &middot; ' + item.cost + ' ' + unit + '</button>';
   }
+
   function paintSkins() {
-    const sig = S.coins + "/" + S.gems + "|" + S.skin + "|" + S.tail + "|" + S.color;
+    const sig = S.coins + "/" + S.gems + "|" + S.skin + "|" + S.tail + "|" + S.color +
+      "|" + S.owned.skins.size + "." + S.owned.tails.size +
+      "|" + (S.buying ? S.buying.kind + S.buying.id : "-");
     if ($("skins").dataset.sig !== sig || $("tails").dataset.sig !== sig) previews.length = 0;
-    grid($("skins"), SKINS, S.skin, sig, S.coins, "coins");
-    grid($("tails"), TAILS, S.tail, sig, S.gems, "gems");
+    grid($("skins"), SKINS, S.skin, sig, "skins");
+    grid($("tails"), TAILS, S.tail, sig, "tails");
     $("coinTotal").textContent = S.coins + (S.coins === 1 ? " coin" : " coins");
     $("gemTotal").textContent = S.gems + (S.gems === 1 ? " gem" : " gems");
-    const nh = nextUnlock(SKINS, S.coins), nt = nextUnlock(TAILS, S.gems);
-    $("skinHint").textContent = nh
-      ? (nh.cost - S.coins) + " more coins unlocks " + nh.name.toLowerCase()
-      : "every cursor unlocked";
-    $("tailHint").textContent = nt
-      ? (nt.cost - S.gems) + " more gems unlocks the " + nt.name.toLowerCase() + " tail"
-      : "every tail unlocked";
+    $("skinHint").innerHTML = tillHTML("skins", S.coins, "coins");
+    $("tailHint").innerHTML = tillHTML("tails", S.gems, "gems");
+  }
+
+  function buy(kind) {
+    if (!S.buying || S.buying.kind !== kind) return;
+    if (!S.canBuy) { say("sign in with google to buy"); return; }
+    const item = (kind === "skins" ? skinById : tailById)(S.buying.id);
+    if (owns(item, kind)) return;
+    const purse = kind === "skins" ? S.coins : S.gems;
+    if (purse < item.cost) { say("not enough " + (kind === "skins" ? "coins" : "gems")); return; }
+    if (kind === "skins") { S.coins -= item.cost; S.skin = item.id; }
+    else { S.gems -= item.cost; S.tail = item.id; }
+    S.owned[kind].add(item.id);
+    S.buying = null;
+    saveProfile(); paintSkins(); paintRail(); updateAppCursor(); pushPresence(true);
   }
   const SAMPLE = [];
   for (let i = 0; i <= 9; i++) {
@@ -2365,18 +2449,27 @@
       c.restore();
     }
   }
-  $("skins").addEventListener("click", e => {
-    const b = e.target.closest(".skin");
-    if (!b || b.disabled) return;
-    S.skin = b.dataset.id;
-    saveProfile(); paintSkins(); updateAppCursor(); pushPresence(true);
-  });
-  $("tails").addEventListener("click", e => {
-    const b = e.target.closest(".skin");
-    if (!b || b.disabled) return;
-    S.tail = b.dataset.id;
-    saveProfile(); paintSkins(); pushPresence(true);
-  });
+  function pickFrom(kind, el) {
+    el.addEventListener("click", e => {
+      const b = e.target.closest(".skin");
+      if (!b) return;
+      const item = (kind === "skins" ? skinById : tailById)(b.dataset.id);
+      if (!owns(item, kind)) {                 // arm it, the till does the rest
+        S.buying = { kind, id: item.id };
+        paintSkins();
+        return;
+      }
+      S.buying = null;
+      if (kind === "skins") S.skin = item.id; else S.tail = item.id;
+      saveProfile(); paintSkins(); paintRail();
+      if (kind === "skins") updateAppCursor();
+      pushPresence(true);
+    });
+  }
+  pickFrom("skins", $("skins"));
+  pickFrom("tails", $("tails"));
+  $("skinHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("skins"); });
+  $("tailHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("tails"); });
 
   /* the chosen head doubles as the page's own mouse cursor */
   let cursorUrl = "";
@@ -2432,8 +2525,12 @@
       if (typeof saved.wins === "number") S.wins = saved.wins;
       if (typeof saved.coins === "number") S.coins = saved.coins;
       if (typeof saved.gems === "number") S.gems = saved.gems;
-      if (typeof saved.skin === "string" && skinById(saved.skin).cost <= S.coins) S.skin = saved.skin;
-      if (typeof saved.tail === "string" && tailById(saved.tail).cost <= S.gems) S.tail = saved.tail;
+      if (saved.owned) {
+        for (const id of saved.owned.skins || []) S.owned.skins.add(id);
+        for (const id of saved.owned.tails || []) S.owned.tails.add(id);
+      }
+      if (typeof saved.skin === "string" && owns(skinById(saved.skin), "skins")) S.skin = saved.skin;
+      if (typeof saved.tail === "string" && owns(tailById(saved.tail), "tails")) S.tail = saved.tail;
     }
     nameInput.value = S.name;
     paintSwatches();

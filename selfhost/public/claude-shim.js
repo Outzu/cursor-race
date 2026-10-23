@@ -335,9 +335,18 @@
     return st;
   }
 
+  var session = null;   // what /api/session last told us, including the account
+
   var user = Object.freeze({
     id: function () { return Promise.resolve(uid); },
-    me: function () { return Promise.resolve({ id: uid, guest: false }); },
+    // a guest here means nobody signed in; purchases are gated on this
+    me: function () {
+      return Promise.resolve({
+        id: uid,
+        guest: !(session && session.account),
+        name: (session && session.account && session.account.name) || ""
+      });
+    },
     isOwner: function () { return false; },
     canEdit: function () { return true; },
     can: function () { return true; },
@@ -350,7 +359,8 @@
   var booted = fetch("/api/session", { credentials: "same-origin" })
     .then(function (r) { return r.json(); })
     .catch(function () { return null; })
-    .then(function () {
+    .then(function (s) {
+      session = s;
       connect();
       return new Promise(function (resolve) {
         if (ready) return resolve(true);

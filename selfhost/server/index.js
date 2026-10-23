@@ -69,9 +69,11 @@ function adjOf(uid) {
   store.set("wallets/" + uid, { coinAdj: G.START_COINS, created: Date.now() });
   return G.START_COINS;
 }
+/* May be negative: the starting coins arrive as an adjustment, so a player who
+   spends them has earned less than nothing yet. Only the shown balance floors. */
 function earnedOf(uid) {
   const p = store.get("data/users/" + uid + "/profile");
-  return p && typeof p.coins === "number" ? Math.max(0, Math.floor(p.coins)) : 0;
+  return p && typeof p.coins === "number" ? Math.floor(p.coins) : 0;
 }
 function balance(uid) { return Math.max(0, Math.round(earnedOf(uid) + adjOf(uid))); }
 
@@ -215,9 +217,14 @@ function writeFor(uid, p, data, mode) {
     // the client sends the balance it was shown, which already includes the
     // server's adjustment: take it back off so the next read does not add twice
     if (typeof clean.coins === "number") {
-      clean.coins = Math.max(0, Math.round(clean.coins - adjOf(uid)));
+      clean.coins = Math.round(clean.coins - adjOf(uid));
     }
     if (typeof clean.gems === "number") clean.gems = Math.max(0, Math.floor(clean.gems));
+    // only a signed-in account may acquire items; a guest keeps whatever is stored
+    if (clean.owned && !store.get("users/" + uid)) {
+      const held = (store.get(p) || {}).owned;
+      if (held) clean.owned = held; else delete clean.owned;
+    }
     if (mode === "update") store.update(p, clean); else store.set(p, clean);
     return null;
   }

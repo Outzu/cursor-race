@@ -51,6 +51,15 @@ gems in the same places; what differs is who gets there first. A claim is broadc
 table's room and the relay delivers it in one order to everyone, so the first claim back is
 the winner on every screen without anyone arbitrating.
 
+**Practice runs pay nothing.** No coins, no gems, no entry, no pot — they exist to learn the
+channel, not to farm it.
+
+**Cursors and tails are bought, not unlocked.** A locked one shows a lock and its price; tap
+it and the line under the grid becomes the till. Buying spends the currency, so the ladder is
+a choice rather than a threshold you drift past. Only a signed-in account may buy: a guest
+sees "sign in with google to buy", and the server keeps whatever `owned` it already holds for
+a player with no account rather than taking the client's word for it.
+
 ## Tables
 
 The site is split into six tables, each capped at ten pilots, each running its own race on
