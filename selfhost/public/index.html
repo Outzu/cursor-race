@@ -2415,12 +2415,24 @@
   function step(now) {
     const left = msToStart();
 
-    /* the lights are still on, so nobody gets past the grid line: the cursor
-       slides along it instead, the way a car sits on its mark */
+    /* While the lights are on the cursor is parked on the grid: it cannot pass
+       the line, and it cannot be off the road either. Nobody should lose a race
+       on its first frame because the pointer happened to be resting on a wall,
+       or off the playfield altogether. It slides along whatever is holding it,
+       the way a car sits on its mark. */
     S.held = false;
     if (S.phase === "open") {
-      const hold = gridHoldY();
-      if (S.cy < hold) { S.cy = hold; S.held = true; }
+      const lo = Math.max(R, gridHoldY());
+      if (S.cy < lo) { S.cy = lo; S.held = true; }
+      if (S.cy > H - R) S.cy = H - R;
+
+      const u = S.dist + H - S.cy;
+      // a slot on the grid, not a perch on the kerb: pinned hard against the
+      // wall, the first frame of scroll would take you out anyway
+      const c = centerX(u, S.world), room = Math.max(4, halfW(u) - R - 10);
+      const xLo = Math.max(R, c - room), xHi = Math.min(W - R, c + room);
+      S.cx = xLo > xHi ? c : Math.max(xLo, Math.min(xHi, S.cx));
+      S.inside = true;              // and a pointer still off the stage is not a loss
     }
 
     if (S.phase === "open") {
