@@ -1215,9 +1215,14 @@
     paintVeil(); paintRail();
   }
 
+  /* a race needs someone to race against; on your own, take a practice run */
+  const pilotsHere = () => (S.tableRoom ? S.peers.length : 1);
+  const canOpenRace = () => pilotsHere() >= 2;
+
   async function openRace() {
     if (!S.db || !S.table) { practiceRun(); return; }
     if (S.phase !== "idle" && S.phase !== "over") return;
+    if (!canOpenRace()) { say("wait for a second pilot at this table"); return; }
     if (S.credits < ENTRY_FEE) { say("you need " + ENTRY_FEE + " credits to open a race"); return; }
     try {
       const lock = S.db.doc("locks/" + S.table);
@@ -1821,6 +1826,13 @@
     if (S.phase === "open") {
       const secs = Math.max(0, Math.ceil(msToStart() / 1000));
       if (withinWarmup()) {
+        // arriving at a table that is already racing: no countdown to show
+        if (!S.joined && msToStart() <= 0) {
+          veil.innerHTML = wrapHTML(
+            '<div class="verdict">race already running</div>' +
+            '<p>Watching this one. Back a pilot from the rail while they are still flying.</p>');
+          return;
+        }
         veil.innerHTML = wrapHTML('<div class="count">' + (secs === 0 ? "GO" : secs) + '</div>' +
           '<p>' + (S.joined ? "Put your cursor in the channel." : "Watching this one.") + '</p>');
         return;
@@ -1886,7 +1898,9 @@
         '<p>' + detail + '</p>' +
         walletLine() +
         '<div class="btnrow">' +
-          '<button class="go" data-act="open">Open a race</button>' +
+          (canOpenRace()
+            ? '<button class="go" data-act="open">Open a race</button>'
+            : '<button class="go" disabled>Waiting for a second pilot</button>') +
           '<button class="go ghost" data-act="practice">Practice run</button>' +
           '<button class="go ghost" data-act="leave">Change table</button>' +
         '</div>' +
@@ -1912,7 +1926,9 @@
       '</div>' +
       walletLine() +
       '<div class="btnrow">' +
-        '<button class="go" data-act="open">Open a race &middot; ' + ENTRY_FEE + '</button>' +
+        (canOpenRace()
+          ? '<button class="go" data-act="open">Open a race &middot; ' + ENTRY_FEE + '</button>'
+          : '<button class="go" disabled>Waiting for a second pilot</button>') +
         '<button class="go ghost" data-act="practice">Practice run</button>' +
         '<button class="go ghost" data-act="leave">Change table</button>' +
         '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
@@ -1994,7 +2010,8 @@
     const betCard = $("betCard");
     betCard.hidden = !canBet;
     if (canBet) {
-      $("betState").textContent = S.bet ? "staked " + S.bet.amt : "pick one";
+      $("betState").textContent = S.bet ? "staked " + S.bet.amt
+        : S.phase === "watching" ? "race running" : "pick one";
       const stakeHTML = STAKES.map(v =>
         '<button class="stake" data-stake="' + v + '" aria-pressed="' + (v === S.stake) + '"' +
         (S.bet ? " disabled" : "") + '>' + v + '</button>').join("");
@@ -2014,7 +2031,9 @@
       if ($("betList").dataset.h !== html) { $("betList").dataset.h = html; $("betList").innerHTML = html; }
       $("betHint").textContent = S.bet
         ? "returns " + (S.bet.amt * n) + " credits if your pick wins"
-        : "pays stake x " + n + " if your pick wins";
+        : S.phase === "watching"
+          ? "race in progress - back a pilot still flying"
+          : "pays stake x " + n + " if your pick wins";
     }
 
     // standings / roster
