@@ -1031,17 +1031,35 @@
     { id: "flare", name: "Flare", cost: 8, width: 9,
       color: (f, col) => col,
       spark: { rate: 26, life: 900, size: 2.2, spread: 34, color: col => col } },
+    { id: "bubble", name: "Bubble", cost: 12, width: 5,
+      color: (f, col) => withA(col, .08 + .3 * f),
+      spark: { rate: 14, life: 2000, size: 4.5, spread: 18, grow: true, shape: "ring",
+               drift: 60, sway: 7, color: col => withA(col, .8) } },
     { id: "rainbow", name: "Rainbow", cost: 18, width: 10,
       color: (f, col, now) => "hsl(" + (((1 - f) * 300 + now / 7) % 360) + " 95% 60%)",
       spark: { rate: 32, life: 1200, size: 2.5, spread: 52,
                color: (col, now) => "hsl(" + ((now / 3) % 360) + " 95% 65%)" } },
+    { id: "snowflake", name: "Snowflake", cost: 22, width: 6,
+      color: (f, col) => "rgba(214,238,255," + (0.08 + 0.3 * f).toFixed(2) + ")",
+      spark: { rate: 20, life: 2600, size: 3.6, spread: 12, shape: "flake",
+               drift: -55, sway: 11,
+               color: () => "rgba(230,246,255,.9)" } },
     { id: "gold", name: "Gold", cost: 35, width: 10,
       color: f => (f > .62 ? "#ffeeb0" : f > .3 ? "#ffc33d" : "#b8780f"),
       spark: { rate: 34, life: 1700, size: 2.3, spread: 24, twinkle: true,
                color: () => "#ffe9a3" } },
+    { id: "fairydust", name: "Fairydust", cost: 45, width: 6,
+      color: (f, col, now) => "hsla(" + ((now / 14 + f * 90) % 360) + " 90% 78% / " + (0.1 + 0.5 * f).toFixed(2) + ")",
+      spark: { rate: 44, life: 1500, size: 2.1, spread: 26, twinkle: true, shape: "star",
+               drift: -22, sway: 5,
+               color: () => "hsl(" + (300 + Math.random() * 110) % 360 + " 95% 80%)" } },
     { id: "sparks", name: "Sparks", cost: 60, width: 7,
       color: (f, col) => col,
       spark: { rate: 58, life: 700, size: 2.8, spread: 135, fall: true, color: col => col } },
+    { id: "canvas", name: "Canvas", cost: 70, width: 16, plain: true,
+      color: (f, col) => withA(col, .5),
+      spark: { rate: 26, life: 2600, size: 7, spread: 9, grow: true,
+               color: col => withA(col, .16) } },
     { id: "smoke", name: "Smoke", cost: 90, width: 12,
       color: (f, col) => withA(col, .2 + .35 * f),
       spark: { rate: 18, life: 2400, size: 5, spread: 14, grow: true,
@@ -1066,6 +1084,52 @@
     glowTail(c, pts, f => tail.color(f, col, now), tail.width);
   }
 
+  /* how a single particle is drawn — shared by the channel and the menu overlay */
+  function particleShape(c, p, x, y, r, now) {
+    const shape = p.shape || "dot";
+    if (shape === "ring") {
+      c.lineWidth = Math.max(1, r * 0.22);
+      c.strokeStyle = p.col;
+      c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke();
+      c.fillStyle = p.col;
+      c.beginPath(); c.arc(x - r * 0.34, y - r * 0.34, Math.max(0.6, r * 0.17), 0, TAU); c.fill();
+      return;
+    }
+    if (shape === "flake") {
+      c.strokeStyle = p.col;
+      c.lineWidth = Math.max(0.8, r * 0.2);
+      c.save();
+      c.translate(x, y);
+      c.rotate(now / 1200 + p.born);
+      c.beginPath();
+      for (let i = 0; i < 3; i++) {
+        const a = (i * Math.PI) / 3;
+        c.moveTo(-Math.cos(a) * r, -Math.sin(a) * r);
+        c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      }
+      c.stroke();
+      c.restore();
+      return;
+    }
+    if (shape === "star") {
+      c.fillStyle = p.col;
+      c.save();
+      c.translate(x, y);
+      c.rotate(now / 700 + p.born);
+      c.beginPath();
+      for (let i = 0; i < 4; i++) {
+        const a = (i * Math.PI) / 2;
+        c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+        c.lineTo(Math.cos(a + Math.PI / 4) * r * 0.3, Math.sin(a + Math.PI / 4) * r * 0.3);
+      }
+      c.closePath(); c.fill();
+      c.restore();
+      return;
+    }
+    c.fillStyle = p.col;
+    c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+  }
+
   /* particles live in world units (u), so they stay where they were dropped */
   const PARTS = [];
   const lastSpark = new Map();
@@ -1088,7 +1152,8 @@
         life: sp.life * (0.7 + Math.random() * 0.6),
         size: sp.size * (0.7 + Math.random() * 0.6),
         col: sp.color(col, now),
-        grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall
+        grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall,
+        shape: sp.shape || "dot", drift: sp.drift || 0, sway: sp.sway || 0
       });
     }
     while (PARTS.length > 420) PARTS.shift();
@@ -1100,12 +1165,11 @@
       if (age > p.life) { PARTS.splice(i, 1); continue; }
       const t = age / 1000;
       const f = 1 - age / p.life;
-      const px = p.x + p.vx * t;
-      const pu = p.u + p.vu * t - (p.fall ? 130 * t * t : 0);
+      const px = p.x + p.vx * t + (p.sway ? Math.sin(t * 3 + p.born) * p.sway : 0);
+      const pu = p.u + p.vu * t + p.drift * t - (p.fall ? 130 * t * t : 0);
       const r = p.size * (p.grow ? 1 + 2.4 * (1 - f) : 0.4 + 0.6 * f);
       c.globalAlpha = 0.9 * f * (p.twinkle ? 0.4 + 0.6 * Math.abs(Math.sin(now / 90 + p.born)) : 1);
-      c.fillStyle = p.col;
-      c.beginPath(); c.arc(px, H - (pu - dist), r, 0, TAU); c.fill();
+      particleShape(c, p, px, H - (pu - dist), r, now);
     }
     c.globalAlpha = 1;
   }
@@ -2010,7 +2074,9 @@
       fxParts.push({
         x: head[0], y: head[1], vx: Math.cos(a) * s, vy: Math.sin(a) * s,
         born: now, life: sp.life, size: sp.size, col: sp.color(S.color, now),
-        grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall
+        grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall,
+        // on screen, up is negative y — the world's "drift up" flips sign here
+        shape: sp.shape || "dot", drift: -(sp.drift || 0), sway: sp.sway || 0
       });
       if (fxParts.length > 160) fxParts.shift();
     }
@@ -2020,10 +2086,10 @@
       const t = age / 1000, f = 1 - age / q.life;
       const r = q.size * (q.grow ? 1 + 2.4 * (1 - f) : 0.4 + 0.6 * f);
       fxc.globalAlpha = 0.85 * f * (q.twinkle ? 0.4 + 0.6 * Math.abs(Math.sin(now / 90 + q.born)) : 1);
-      fxc.fillStyle = q.col;
-      fxc.beginPath();
-      fxc.arc(q.x + q.vx * t, q.y + q.vy * t + (q.fall ? 120 * t * t : 0), r, 0, TAU);
-      fxc.fill();
+      particleShape(fxc, q,
+        q.x + q.vx * t + (q.sway ? Math.sin(t * 3 + q.born) * q.sway : 0),
+        q.y + q.vy * t + q.drift * t + (q.fall ? 120 * t * t : 0),
+        r, now);
     }
     fxc.globalAlpha = 1;
   }
@@ -2442,10 +2508,8 @@
           for (let i = 0; i < 5; i++) {
             const a = i * 2.3 + now / 900;
             c.globalAlpha = .5 + .3 * Math.sin(now / 200 + i);
-            c.fillStyle = sp.color(S.color, now);
-            c.beginPath();
-            c.arc(-16 + i * 5 + Math.cos(a) * 5, 9 - i * 2 + Math.sin(a) * 6, sp.size * 1.3, 0, TAU);
-            c.fill();
+            particleShape(c, { col: sp.color(S.color, now), shape: sp.shape, born: i },
+              -16 + i * 5 + Math.cos(a) * 5, 9 - i * 2 + Math.sin(a) * 6, sp.size * 1.3, now);
           }
           c.globalAlpha = 1;
         }
