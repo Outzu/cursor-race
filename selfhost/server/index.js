@@ -579,6 +579,23 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  /* The tunables the page keeps its own defaults for. It asks once at boot, so
+     changing ENTRY_FEE or TABLE_CAP in the env file is enough - without this a
+     server quietly allowing 13 to a table still shows 10 on every card, and
+     refuses the eleventh pilot from the page before the server ever sees them. */
+  if (url.pathname === "/api/rules") {
+    res.writeHead(200, {
+      "content-type": MIME[".json"],
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store"
+    });
+    res.end(JSON.stringify({
+      tableCap: G.TABLE_CAP, entryFee: G.ENTRY_FEE, joinWindow: G.JOIN_WINDOW,
+      startCoins: G.START_COINS, stakes: G.STAKES
+    }));
+    return;
+  }
+
   if (url.pathname === "/api/regions") {
     res.writeHead(200, {
       "content-type": MIME[".json"],

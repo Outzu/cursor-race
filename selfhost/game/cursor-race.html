@@ -981,13 +981,16 @@
      behind while the lights are still on */
   const GRID_U = 420, GRID_TH = 26;
 
-  const JOIN_WINDOW = 10000;   // default only; the server's value wins once seen
+  /* Defaults only. The server owns these, and loadRules() asks it once at
+     boot; they stay as written where there is no server to ask, which is what
+     running as an artifact looks like. */
+  let JOIN_WINDOW = 10000;
   const TABLES = ["t1", "t2", "t3", "t4", "t5", "t6"];
-  const TABLE_CAP = 10;
+  let TABLE_CAP = 10;
   const tableName = id => "Table " + (TABLES.indexOf(id) + 1);
-  const ENTRY_FEE = 10;
-  const START_COINS = 100;
-  const STAKES = [5, 10, 25];
+  let ENTRY_FEE = 10;
+  let START_COINS = 100;
+  let STAKES = [5, 10, 25];
   const RESULT_HOLD = 9000;
 
   const COLORS = ["#00c7fd", "#feb703", "#ff5470", "#9b8cff", "#6ee36a", "#ff8ad4", "#58b4ff", "#ffe66b"];
@@ -2787,6 +2790,25 @@
     location.href = r.url + "/?region=" + encodeURIComponent(id);
   }
 
+  async function loadRules() {
+    let r = null;
+    try { r = await (await fetch("/api/rules", { cache: "no-store" })).json(); } catch (e) { return; }
+    if (!r || typeof r !== "object") return;
+    const num = (v, lo, hi) =>
+      typeof v === "number" && isFinite(v) && v >= lo && v <= hi ? Math.round(v) : null;
+
+    const cap = num(r.tableCap, 2, 60);        if (cap !== null) TABLE_CAP = cap;
+    const fee = num(r.entryFee, 0, 1e6);       if (fee !== null) ENTRY_FEE = fee;
+    const coins = num(r.startCoins, 0, 1e7);   if (coins !== null) START_COINS = coins;
+    const gate = num(r.joinWindow, 3000, 300000);
+    if (gate !== null) { JOIN_WINDOW = gate; S.gateSecs = Math.max(1, Math.round(gate / 1000)); }
+    if (Array.isArray(r.stakes) && r.stakes.length &&
+        r.stakes.every(x => typeof x === "number" && isFinite(x) && x > 0)) {
+      STAKES = r.stakes.slice(0, 6).map(Math.round);
+    }
+    paintVeil(); paintRail();
+  }
+
   async function setUpRegions() {
     let info = null;
     try { info = await (await fetch("/api/regions", { cache: "no-store" })).json(); } catch (e) { return; }
@@ -3664,6 +3686,7 @@
     requestAnimationFrame(frame);
     connect();
     loadProfile();
+    loadRules();             // the server's tunables beat the page's defaults
     setUpRegions();          // quiet where there is only one server to play on
   }
 
