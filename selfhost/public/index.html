@@ -3005,9 +3005,23 @@
     music.preload = "auto";
     return music;
   }
+  /* The music sits behind the game, never in front of it. The slider still
+     sets how loud it is in the lobby; from there it ducks right down while a
+     race is on, and further still while a cue is playing, so the cue and the
+     channel are heard over it rather than through it. */
+  const DUCK_RACE = 0.18, DUCK_CUE = 0.35, CUE_LEVEL = 0.8;
+  let cueing = false, cueTimer = 0;
+  function musicLevel() {
+    let v = musicVol;
+    if (document.body.classList.contains("focus")) v *= DUCK_RACE;
+    if (cueing) v *= DUCK_CUE;
+    return Math.max(0, Math.min(1, v));
+  }
+  function applyMusicLevel() { if (music) music.volume = musicLevel(); }
+
   function setVolume(v) {
     musicVol = Math.min(1, Math.max(0, v));
-    if (music) music.volume = musicVol;
+    applyMusicLevel();
     try { localStorage.setItem("cr.vol", String(Math.round(musicVol * 100))); } catch (e) {}
   }
   /* Two cues: one as the gate opens, one when the lights go out. Short enough
@@ -3024,15 +3038,25 @@
     if (!musicOn) return;
     let a = sfxEl[which];
     if (!a) { a = sfxEl[which] = new Audio(SFX[which]); a.preload = "auto"; }
-    a.volume = Math.min(1, musicVol * 2.2);    // a cue should carry over the music
+    /* The slider is the master for everything that makes a sound. These used
+       to be boosted above it, which pinned them at full volume for most of the
+       slider's travel - so turning it down did nothing to them. They sit under
+       it now; what makes them carry is the music ducking out of the way, not
+       the cue being loud. */
+    a.volume = Math.min(1, musicVol * CUE_LEVEL);
     if (which === "go" && sfxEl.prepare) { try { sfxEl.prepare.pause(); } catch (e) {} }
     try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
+    const secs = isFinite(a.duration) && a.duration ? a.duration : 4;
+    clearTimeout(cueTimer);                   // a cue cut short by the next one
+    cueing = true; applyMusicLevel();
+    cueTimer = setTimeout(() => { cueing = false; applyMusicLevel(); }, secs * 1000 + 150);
   }
 
   function syncMusic() {
     const wanted = musicOn;          // keeps playing through a race unless muted
     if (!wanted) { if (music && !music.paused) music.pause(); return; }
     const m = ensureMusic();
+    m.volume = musicLevel();                  // the race may have started since
     if (m.paused) m.play().catch(() => {});   // still waiting for a gesture
   }
   function paintMusic() {
