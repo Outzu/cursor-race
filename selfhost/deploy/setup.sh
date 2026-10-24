@@ -43,6 +43,14 @@ echo "==> user and directories"
 id -u cursorrace >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin cursorrace
 mkdir -p "$APP_DIR" "$DATA_DIR" /var/log/caddy
 chown -R cursorrace:cursorrace "$APP_DIR" "$DATA_DIR"
+
+# The app directory belongs to the service account, so git - run as root -
+# refuses to touch it as "dubious ownership". Updates normally come from
+# deploy.sh, but the runbook also says to pull here, and that should not stop
+# on a safety check about a directory root just provisioned itself.
+if command -v git >/dev/null && [ -d "$APP_DIR/.git" ]; then
+  git config --global --add safe.directory "$APP_DIR" 2>/dev/null || true
+fi
 chown -R caddy:caddy /var/log/caddy
 
 echo "==> environment"
