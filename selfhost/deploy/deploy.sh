@@ -36,7 +36,12 @@ sudo chown -R cursorrace:cursorrace "$APP_DIR"
 # but installing it is cheap and keeps the two cases identical. node_modules is
 # left out of the rsync above so a failed install leaves the running service on
 # the last one that worked.
-if ! sudo -u cursorrace npm ci --omit=dev --prefix "$APP_DIR/selfhost" --no-audit --no-fund; then
+# As root, not as cursorrace: the service account is created with
+# --no-create-home, so it has nowhere to put npm's cache and the install dies
+# on EACCES. --ignore-scripts because nothing here needs a build step and root
+# should not be running a package's install hooks. The chown below hands it
+# back.
+if ! sudo npm ci --omit=dev --ignore-scripts --prefix "$APP_DIR/selfhost" --no-audit --no-fund; then
   echo "dependency install failed; service left on the previous build" >&2
   exit 1
 fi

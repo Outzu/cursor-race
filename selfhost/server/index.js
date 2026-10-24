@@ -79,12 +79,11 @@ let shared = null;
 
 if (process.env.DATABASE_URL) {
   const { Pool } = require("pg");
-  const { PgStore } = require("./pgstore");
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    max: Number(process.env.DATABASE_POOL || 6),
-    ssl: process.env.DATABASE_NO_SSL ? false : { rejectUnauthorized: false }
-  });
+  const { PgStore, pgConfig } = require("./pgstore");
+  const pool = new Pool(Object.assign(
+    pgConfig(process.env.DATABASE_URL),
+    { max: Number(process.env.DATABASE_POOL || 6) }
+  ));
   pool.on("error", e => console.error("postgres pool:", e.message));
   shared = new PgStore(pool, (...a) => console.error(...a));
 }

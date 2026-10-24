@@ -18,7 +18,7 @@
 
 const fs = require("fs");
 const { Pool } = require("pg");
-const { SCHEMA } = require("../server/pgstore");
+const { SCHEMA, pgConfig } = require("../server/pgstore");
 const { REGIONAL } = require("../server/store");
 
 const args = process.argv.slice(2);
@@ -59,10 +59,7 @@ async function main() {
     return;
   }
 
-  const pool = new Pool({
-    connectionString: process.env.DATABASE_URL,
-    ssl: process.env.DATABASE_NO_SSL ? false : { rejectUnauthorized: false }
-  });
+  const pool = new Pool(pgConfig(process.env.DATABASE_URL));
   for (const sql of SCHEMA) await pool.query(sql);
 
   let wrote = 0, left = 0;

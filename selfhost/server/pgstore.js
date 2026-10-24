@@ -247,4 +247,38 @@ class PgStore {
   }
 }
 
-module.exports = { PgStore, SCHEMA };
+/* How to reach the database, in one place so the server and the migration tool
+   cannot disagree about it.
+
+   A managed Postgres hands out a certificate signed by its provider's own CA,
+   and newer pg treats sslmode=require in the URL as verify-full - which rejects
+   exactly that, with "self-signed certificate in certificate chain". The mode
+   in the URL also wins over an ssl option passed alongside it, so the mode has
+   to come out of the URL for our settings to mean anything.
+
+   Point DATABASE_CA at the provider's CA file and the certificate is properly
+   verified. Without one the connection is still encrypted but unauthenticated,
+   which is the usual trade on a provider's private network - and the warning
+   below says so once, rather than leaving it silent. */
+let warned = false;
+function pgConfig(url, log) {
+  const u = new URL(url);
+  for (const k of ["sslmode", "uselibpqcompat"]) u.searchParams.delete(k);
+
+  let ssl;
+  if (process.env.DATABASE_NO_SSL) {
+    ssl = false;
+  } else if (process.env.DATABASE_CA) {
+    ssl = { ca: require("fs").readFileSync(process.env.DATABASE_CA, "utf8"), rejectUnauthorized: true };
+  } else {
+    ssl = { rejectUnauthorized: false };
+    if (!warned) {
+      warned = true;
+      (log || console.error)(
+        "postgres: encrypted but not verified; set DATABASE_CA to the provider's CA file to check it");
+    }
+  }
+  return { connectionString: u.toString(), ssl };
+}
+
+module.exports = { PgStore, SCHEMA, pgConfig };
