@@ -136,6 +136,7 @@ function chargeForNewGear(uid, wanted, held) {
 }
 
 /* ---------- the room ---------- */
+const soloRuns = new Map();   // uid -> { id, startedAt } for a run in progress
 const peers = new Map();       // peerId -> { conn, uid, presence, rooms: Map(name -> presence) }
 const rooms = new Map();       // room name -> Set(peerId)
 const watchers = new Map();    // docPath -> Set(peerId)
@@ -260,7 +261,31 @@ function writeFor(uid, p, data, mode) {
   }
   if (/^live\//.test(p)) return "not_permitted";
 
-  if (p === "board/top") {
+  /* A single-player run earns coins now, and has no other pilots to keep it
+     honest. So the server notes when one opens and will not credit more than
+     that many seconds could have earned - the same arithmetic a race settles
+     with. One claim per run, and the run is forgotten once claimed. */
+  const solo = /^solo\/(.+)$/.exec(p);
+  if (solo) {
+    if (solo[1] !== uid) return "not_permitted";
+    if (data && typeof data.open === "string") {
+      soloRuns.set(uid, { id: data.open.slice(0, 32), startedAt: Date.now() });
+      return null;
+    }
+    const run = soloRuns.get(uid);
+    if (!run || !data || data.run !== run.id) return "not_permitted";
+    soloRuns.delete(uid);
+    const span = G.maxDistAt(run.startedAt, Date.now());
+    const coins = Math.min(Math.max(0, Math.round(Number(data.coins) || 0)),
+                           Math.max(0, Math.floor((span + G.H) / 520) + 1));
+    const gems = Math.min(Math.max(0, Math.round(Number(data.gems) || 0)),
+                          Math.ceil(span / 700) + 2);
+    if (coins) move(uid, coins, "solo run");
+    if (gems) move(uid, gems, "solo gems", "gems");
+    return null;
+  }
+
+  if (p === "board/top" || p === "board/solo") {
     if (!store.get("users/" + uid)) return "not_permitted";     // signed-in players only
     const rows = (Array.isArray(data.rows) ? data.rows : [])
       .filter(r => r && typeof r.uid === "string" && typeof r.best === "number" && isFinite(r.best))

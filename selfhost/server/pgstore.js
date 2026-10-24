@@ -262,7 +262,18 @@ class PgStore {
    below says so once, rather than leaving it silent. */
 let warned = false;
 function pgConfig(url, log) {
-  const u = new URL(url);
+  let u;
+  try {
+    u = new URL(url);
+  } catch (e) {
+    /* Nearly always a truncated DATABASE_URL: these are long, and an editor
+       that wraps the line leaves half of it behind. Say that, rather than
+       throwing a parser error with a stack trace into the journal. */
+    const shown = String(url || "");
+    throw new Error(
+      "DATABASE_URL is not a valid connection string (" + shown.length + " characters, " +
+      "ending \"" + shown.slice(-24) + "\"). It must be one unbroken line.");
+  }
   for (const k of ["sslmode", "uselibpqcompat"]) u.searchParams.delete(k);
 
   let ssl;
