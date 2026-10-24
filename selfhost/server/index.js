@@ -137,6 +137,31 @@ function chargeForNewGear(uid, wanted, held) {
 
 /* ---------- the room ---------- */
 const soloRuns = new Map();   // uid -> { id, startedAt } for a run in progress
+
+/* How many sockets one address may hold open, and how many the server will
+   hold at once. Nothing else here bounds volume: a single host could open
+   sockets until the memory ceiling killed the process, and systemd would
+   restart it into the same flood.
+
+   Behind the proxy every connection arrives from Cloudflare, so the address
+   that matters is the one it forwards. That header is only believed when
+   TRUST_PROXY says the proxy is genuinely in front - a header anyone can set
+   is no limit at all, and trusting it on a naked origin would hand an
+   attacker an unlimited supply of distinct "addresses". */
+const CONN_PER_IP = Number(process.env.CONN_PER_IP || 24);
+const CONN_TOTAL = Number(process.env.CONN_TOTAL || 1200);
+const TRUST_PROXY = !!process.env.TRUST_PROXY;
+const heldByIp = new Map();
+
+function clientIp(req) {
+  if (TRUST_PROXY) {
+    const cf = req.headers["cf-connecting-ip"];
+    if (cf) return String(cf).slice(0, 45);
+    const fwd = req.headers["x-forwarded-for"];
+    if (fwd) return String(fwd).split(",")[0].trim().slice(0, 45);
+  }
+  return (req.socket && req.socket.remoteAddress) || "?";
+}
 const peers = new Map();       // peerId -> { conn, uid, presence, rooms: Map(name -> presence) }
 const rooms = new Map();       // room name -> Set(peerId)
 const watchers = new Map();    // docPath -> Set(peerId)
@@ -737,12 +762,24 @@ const server = http.createServer((req, res) => {
 attach(server, "/ws", (conn, req) => {
   const uid = verify(cookieOf(req, "cr_session"));
   if (!uid) { conn.json({ type: "error", code: "no_session" }); conn.close(); return; }
+
+  const ip = clientIp(req);
+  const held = heldByIp.get(ip) || 0;
+  if (peers.size >= CONN_TOTAL || held >= CONN_PER_IP) {
+    conn.json({ type: "error", code: "busy" });
+    conn.close();
+    return;
+  }
+  heldByIp.set(ip, held + 1);
+
   const peerId = crypto.randomBytes(8).toString("hex");
   peers.set(peerId, { conn, uid, presence: {}, rooms: new Map() });
   conn.json({ type: "ready", peer: peerId, uid, now: Date.now() });
   broadcastPeers();
   conn.on("message", raw => onMessage(peerId, raw));
   conn.on("close", () => {
+    const n = (heldByIp.get(ip) || 1) - 1;
+    if (n > 0) heldByIp.set(ip, n); else heldByIp.delete(ip);
     const p = peers.get(peerId);
     if (p) for (const name of [...p.rooms.keys()]) leaveRoom(peerId, name);
     peers.delete(peerId);

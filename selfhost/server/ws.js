@@ -1,4 +1,6 @@
 "use strict";
+
+const MAX_MSG = 1 << 20;   // a megabyte, per frame and per reassembled message
 /* A minimal RFC 6455 WebSocket server on top of Node's http upgrade event.
    Text frames only, 1 MiB cap, no extensions — which is all this game needs,
    and it keeps the project dependency-free. */
@@ -53,7 +55,7 @@ class Conn {
       if (b.readUInt32BE(off) !== 0) { this.destroy(); return null; }
       len = b.readUInt32BE(off + 4); off += 8;
     }
-    if (len > (1 << 20)) { this.destroy(); return null; }
+    if (len > MAX_MSG) { this.destroy(); return null; }
     let mask = null;
     if (masked) {
       if (b.length < off + 4) return null;
@@ -70,8 +72,13 @@ class Conn {
     if (f.op === 0x8) { this.close(); return; }
     if (f.op === 0x9) { this.send(f.data, 0xa); return; }
     if (f.op === 0xa) return;
+    /* A single frame is capped at a megabyte, but a message split across
+       frames was not: enough continuations with the fin bit clear and the
+       buffer grows until the process dies. Nothing this server speaks needs
+       more than one frame, so the whole message is held to the same ceiling. */
     if (f.op === 0x0) {
       if (!this.frag) return;
+      if (this.frag.length + f.data.length > MAX_MSG) { this.destroy(); return; }
       this.frag = Buffer.concat([this.frag, f.data]);
     } else {
       this.frag = f.data;
