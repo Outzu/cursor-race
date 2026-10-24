@@ -44,7 +44,7 @@ const ACCOUNT_CSS =
   'font:12px "Azeret Mono",ui-monospace,monospace}';
 
 const game = fs.readFileSync(SRC, "utf8");
-const title = (/<title>([^<]*)<\/title>/i.exec(game) || [, "Cursor Race"])[1];
+const title = (/<title>([^<]*)<\/title>/i.exec(game) || [, "Cursor Clash"])[1];
 
 const page =
   "<!doctype html>\n<html lang=\"en\">\n<head>\n" +

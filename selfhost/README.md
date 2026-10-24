@@ -1,4 +1,4 @@
-# Cursor Race — self-hosted
+# Cursor Clash — self-hosted
 
 Runs the same `cursor-race.html` on your own domain. No npm dependencies: Node 18+ and
 these files are the whole stack.
@@ -259,9 +259,36 @@ delta between reading a balance and writing it back.
 
 `npm test` covers the split and the arithmetic against an in-memory Postgres.
 
-DigitalOcean has no GeoDNS, so sending players to the nearer server is your choice: two
-hostnames and a picker, or a Cloudflare Worker redirecting on `request.cf.country`. The
-page already measures its round trip, so it could also probe both and suggest the faster.
+### Sending players to the nearer one
+
+The page does it, by measuring. `REGIONS` lists every server as `id|name|origin`; each
+answers `/api/ping` from any origin, so the browser times all of them, starts a first-time
+visitor on the quickest, and puts the list behind the signal meter in the corner with a
+live figure against each. Choosing one is remembered and honoured from then on — a player
+who prefers a busier table over a nearer server gets to keep that.
+
+Measuring beats geography: an address can place someone correctly and still be wrong about
+which server answers them fastest, and this needs no GeoIP database to go stale. A region
+only wins the automatic choice if it is more than 40 ms better, since below that the
+reload costs more than it saves, and the decision to *stay* is recorded as firmly as the
+decision to move — otherwise the next load reads a faster-on-paper region back and reloads
+for a difference already dismissed.
+
+The choice travels as `?region=<id>` because localStorage does not cross a domain. Neither
+does a cookie: `play.example.com` and `us.example.com` are different hosts, so without
+`COOKIE_DOMAIN` set to the parent each would hand the same player a different id and
+sharing `SESSION_SECRET` would achieve nothing.
+
+With `REGIONS` unset there is no picker and nothing is measured, which is what a
+single-region deployment should look like.
+
+### Moving an existing server onto the shared store
+
+`tools/migrate-to-shared.js` copies wallets, accounts, identities, profiles and the board
+out of the JSON file and into Postgres, leaving `live/` and `locks/` behind. Run it **before**
+setting `DATABASE_URL` on a server that already has players: the moment that variable is
+set, accounts are read from the database, and an empty one makes every player look new.
+It reports what it would move and writes nothing until given `--go`.
 
 ## Accounts and Google sign-in
 

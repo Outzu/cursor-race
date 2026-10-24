@@ -59,6 +59,22 @@ fi
 echo "==> services"
 install -m 644 "$HERE/cursor-race.service" /etc/systemd/system/cursor-race.service
 sed "s/example\.com/$DOMAIN/g" "$HERE/Caddyfile" > /etc/caddy/Caddyfile
+
+# An apex domain is the one people type without thinking, and the one they then
+# type with a www in front of. Without a block for it Caddy has no certificate
+# for that name and the browser shows a security warning rather than the game,
+# which reads as broken. Only for an apex: adding www to a name that already has
+# a subdomain would be a host nobody has pointed anywhere, and Caddy would keep
+# failing to get a certificate for it.
+if [ "$(echo "$DOMAIN" | tr -cd . | wc -c)" -eq 1 ]; then
+  cat >> /etc/caddy/Caddyfile <<CADDY
+
+www.$DOMAIN {
+	redir https://$DOMAIN{uri} permanent
+}
+CADDY
+  echo "    www.$DOMAIN redirects to $DOMAIN (point it at this droplet too)"
+fi
 systemctl daemon-reload
 systemctl enable cursor-race >/dev/null
 systemctl reload-or-restart caddy

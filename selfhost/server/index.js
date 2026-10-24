@@ -1,5 +1,5 @@
 "use strict";
-/* Cursor Race self-hosted server.
+/* Cursor Clash self-hosted server.
 
    Serves the game and stands in for the three claude.ai runtime services the
    page expects: a presence room, a document store and an identity. The wallet
@@ -33,6 +33,14 @@ function loadSecret() {
 }
 const SECRET = loadSecret();
 
+/* Two regions on two subdomains are two different hosts, and a cookie without
+   a Domain goes back to one of them only - so the same player would be handed
+   a fresh id on the other and sharing the session secret would buy nothing.
+   Set COOKIE_DOMAIN to the parent (".example.com") and both can read it.
+   Worth setting even with one server: it is what lets a second region be added
+   later without every player being handed a new id and losing their wallet. */
+const COOKIE_SCOPE = process.env.COOKIE_DOMAIN ? "; Domain=" + process.env.COOKIE_DOMAIN : "";
+
 const sign = v => v + "." + crypto.createHmac("sha256", SECRET).update(v).digest("hex").slice(0, 24);
 function verify(token) {
   if (!token) return null;
@@ -57,6 +65,16 @@ function cookieOf(req, name) {
    store.js decides which paths go where. */
 const local = new Store(DATA);
 const REGION = process.env.REGION || "";
+
+/* Where else a player could be playing. REGIONS is a comma separated list of
+   id|name|origin, and a server naming more than itself is telling the page
+   there is a choice to make. Each origin answers /api/ping from anywhere, so
+   the page can time all of them and pick rather than guess from an address. */
+const REGIONS = String(process.env.REGIONS || "")
+  .split(",").map(x => x.trim()).filter(Boolean)
+  .map(x => { const [id, name, url] = x.split("|").map(y => (y || "").trim());
+              return id && url ? { id, name: name || id, url: url.replace(/\/+$/, "") } : null; })
+  .filter(Boolean);
 let shared = null;
 
 if (process.env.DATABASE_URL) {
@@ -545,7 +563,30 @@ const server = http.createServer((req, res) => {
   if (!uid) {
     uid = newUid();
     const secure = process.env.NODE_ENV === "production" ? "; Secure" : "";
-    setCookie.push("cr_session=" + sign(uid) + "; Path=/; Max-Age=31536000; HttpOnly; SameSite=Lax" + secure);
+    setCookie.push("cr_session=" + sign(uid) + "; Path=/; Max-Age=31536000" + COOKIE_SCOPE +
+      "; HttpOnly; SameSite=Lax" + secure);
+  }
+
+  /* Timed from the page, from any origin, so a player can find out which
+     server is actually nearest instead of being guessed at from their address. */
+  if (url.pathname === "/api/ping") {
+    res.writeHead(204, {
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store, no-cache, must-revalidate",
+      "timing-allow-origin": "*"
+    });
+    res.end();
+    return;
+  }
+
+  if (url.pathname === "/api/regions") {
+    res.writeHead(200, {
+      "content-type": MIME[".json"],
+      "access-control-allow-origin": "*",
+      "cache-control": "no-store"
+    });
+    res.end(JSON.stringify({ here: REGION, regions: REGIONS }));
+    return;
   }
 
   if (url.pathname === "/api/session") {
@@ -567,7 +608,7 @@ const server = http.createServer((req, res) => {
     return proto + "://" + (req.headers.host || "localhost") + "/auth/google/callback";
   };
   const cookieBits = (name, value, maxAge, path) =>
-    name + "=" + value + "; Path=" + (path || "/") + "; Max-Age=" + maxAge +
+    name + "=" + value + "; Path=" + (path || "/") + "; Max-Age=" + maxAge + COOKIE_SCOPE +
     "; HttpOnly; SameSite=Lax" + (process.env.NODE_ENV === "production" ? "; Secure" : "");
 
   if (url.pathname === "/auth/google") {
@@ -678,7 +719,7 @@ attach(server, "/ws", (conn, req) => {
     console.log("shared store: postgres" + (REGION ? " (region " + REGION + ")" : ""));
   }
   server.listen(PORT, () => {
-    console.log("Cursor Race on http://localhost:" + PORT);
+    console.log("Cursor Clash on http://localhost:" + PORT);
     console.log("store: " + DATA + (shared ? "  (races only; accounts are shared)" : ""));
   });
 })().catch(e => {
