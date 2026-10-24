@@ -2546,8 +2546,22 @@
       if (!pr || p.sameTab || pr.rid !== S.rid || !pr.joined || !pr.cursor) continue;
       const rx = Number(pr.cursor.x) * W, ry = Number(pr.cursor.y) * H;
       if (!isFinite(rx) || !isFinite(ry)) continue;
-      const smooth = ghostAt(p.peer, rx, ry, now);
-      const gx = smooth[0], gy = smooth[1];
+
+      /* A screen row means nothing on its own: the channel scrolls under it.
+         By the time a position has crossed the network and waited out the
+         smoothing buffer, our own scroll has moved on - at full speed that is
+         better than a hundred units - so drawing a pilot at the row they sent
+         puts them against walls they never saw, clipping or passing through
+         them while their own screen showed nothing of the sort.
+
+         So their row is turned into a point in the channel using the distance
+         they reported alongside it, smoothed there, and put back on screen
+         against the channel as it stands now. Sideways needs none of this;
+         only the scroll moves. */
+      const theirDist = Number(pr.dist);
+      const ru = (isFinite(theirDist) ? theirDist : dist) + H - ry;
+      const smooth = ghostAt(p.peer, rx, ru, now);
+      const gx = smooth[0], gy = H - (smooth[1] - dist);
       const col = typeof pr.color === "string" ? pr.color : "#8b99bb";
       const out = pr.state !== "racing";
       const sk = skinById(pr.skin);
