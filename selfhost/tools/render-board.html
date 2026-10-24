@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>billboard render rig</title>
+<!-- A build tool, not part of the game: it turns the model in
+     public/brand into the sprite the game embeds. Kept out of public/ so it is
+     never served. Open it through the dev server to re-cut the sprite. -->
+<style>
+  html, body { margin: 0; background: #0a1020; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<!-- GLTFLoader imports "three" by bare name, which a browser cannot resolve on
+     its own; without this map the whole module fails before a line of it runs. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.161.0/examples/jsm/"
+  }
+}
+</script>
+<script type="module">
+window.__err = null;
+addEventListener("error", e => { window.__err = String(e.message || e); });
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+/* A rig, not a renderer. It exists to turn the model into flat sprites the
+   2D game can draw; nothing here ships. An orthographic camera on purpose:
+   with the board turned only about its vertical axis, the face projects to a
+   parallelogram, which a 2D canvas can map a logo onto with a plain affine
+   transform. A perspective camera would need the quad split into triangles. */
+const SIZE = 512;
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(1);
+renderer.setSize(SIZE, SIZE);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const root = new THREE.Group();
+scene.add(root);
+
+scene.add(new THREE.AmbientLight(0xa8c4ff, 1.1));
+const key = new THREE.DirectionalLight(0xffffff, 2.2); key.position.set(3, 5, 4); scene.add(key);
+const rim = new THREE.DirectionalLight(0x00c7fd, 2.6); rim.position.set(-4, 1, -3); scene.add(rim);
+const warm = new THREE.DirectionalLight(0xfeb703, 0.9); warm.position.set(2, -2, 3); scene.add(warm);
+
+const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -500, 500);
+let model = null, fitted = 1;
+
+window.__ready = new Promise((resolve, reject) => {
+  new GLTFLoader().load("/brand/billboard.glb", (gltf) => {
+    model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const mid = box.getCenter(new THREE.Vector3());
+    model.position.sub(mid);                       // centre it on the origin
+    root.add(model);
+    fitted = Math.max(size.x, size.y, size.z);
+    resolve({ size: [size.x, size.y, size.z].map(n => +n.toFixed(2)), meshes: countMeshes(model) });
+  }, undefined, reject);
+});
+
+function countMeshes(o) { let n = 0; o.traverse(c => { if (c.isMesh) n++; }); return n; }
+
+/* Which mesh is the hoarding's face? The flattest, widest one. Listing them
+   with their own dimensions is quicker than guessing from the export's names. */
+window.__meshes = () => {
+  const out = [];
+  model.traverse(c => {
+    if (!c.isMesh) return;
+    c.geometry.computeBoundingBox();
+    const s = c.geometry.boundingBox.getSize(new THREE.Vector3());
+    const dims = [s.x, s.y, s.z].map(n => +n.toFixed(2));
+    const sorted = [...dims].sort((a, b) => a - b);
+    out.push({
+      name: c.name,
+      dims,
+      flatness: +(sorted[0] / sorted[2]).toFixed(3),   // near 0 = a flat panel
+      face: +(sorted[1] * sorted[2]).toFixed(0)        // area of its broad side
+    });
+  });
+  return out;
+};
+
+/* The export's UVs are laid out for its own atlas, so dropping a fresh image
+   on the panel puts it somewhere nobody can see. Generate flat UVs across the
+   face instead: the broad axes of the panel's own geometry become u and v. */
+window.__remap = (meshName) => {
+  let done = 0;
+  model.traverse(c => {
+    if (!c.isMesh || c.name !== meshName) return;
+    const g = c.geometry;
+    g.computeBoundingBox();
+    const bb = g.boundingBox, size = bb.getSize(new THREE.Vector3());
+    const dims = [["x", size.x], ["y", size.y], ["z", size.z]].sort((a, b) => b[1] - a[1]);
+    const [uAxis, uLen] = dims[0], [vAxis, vLen] = dims[1];   // the two broad axes
+    const pos = g.attributes.position;
+    const uv = new Float32Array(pos.count * 2);
+    for (let i = 0; i < pos.count; i++) {
+      uv[i * 2] = (pos[`get${uAxis.toUpperCase()}`](i) - bb.min[uAxis]) / uLen;
+      uv[i * 2 + 1] = 1 - (pos[`get${vAxis.toUpperCase()}`](i) - bb.min[vAxis]) / vLen;
+    }
+    g.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+    done++;
+  });
+  return done;
+};
+
+/* Put a picture on one mesh, lit so it reads as a screen rather than paint. */
+window.__skin = (meshName, url) => new Promise((resolve, reject) => {
+  new THREE.TextureLoader().load(url, (tex) => {
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.flipY = false;                 // glTF UVs
+    let hit = 0;
+    model.traverse(c => {
+      if (!c.isMesh || c.name !== meshName) return;
+      hit++;
+      c.material = new THREE.MeshStandardMaterial({
+        map: tex, emissiveMap: tex, emissive: 0xffffff, emissiveIntensity: 0.85,
+        roughness: 0.55, metalness: 0
+      });
+    });
+    hit ? resolve(hit) : reject(new Error("no mesh called " + meshName));
+  }, undefined, reject);
+});
+
+/* yaw/pitch in degrees, zoom as a fraction of the model's longest side */
+window.__shoot = (yaw = 22, pitch = 10, zoom = 0.62, roll = 0) => {
+  root.rotation.set(0, 0, 0);
+  root.rotateY(yaw * Math.PI / 180);
+  root.rotateX(pitch * Math.PI / 180);
+  root.rotateZ(roll * Math.PI / 180);
+  const half = fitted * zoom;
+  camera.left = -half; camera.right = half; camera.top = half; camera.bottom = -half;
+  camera.position.set(0, 0, 200);
+  camera.lookAt(0, 0, 0);
+  camera.updateProjectionMatrix();
+  renderer.render(scene, camera);
+  return renderer.domElement.toDataURL("image/png");
+};
+
+/* trim the transparent margin, scale to a sprite, and send it to the receiver */
+window.__export = async (name, width, yaw, pitch, zoom) => {
+  window.__shoot(yaw, pitch, zoom);
+  const src = renderer.domElement;
+  const c0 = document.createElement("canvas");
+  c0.width = src.width; c0.height = src.height;
+  const g0 = c0.getContext("2d"); g0.drawImage(src, 0, 0);
+  const d = g0.getImageData(0, 0, c0.width, c0.height).data;
+  let x0 = c0.width, y0 = c0.height, x1 = 0, y1 = 0;
+  for (let y = 0; y < c0.height; y++) for (let x = 0; x < c0.width; x++) {
+    if (d[(y * c0.width + x) * 4 + 3] > 8) {
+      if (x < x0) x0 = x; if (x > x1) x1 = x;
+      if (y < y0) y0 = y; if (y > y1) y1 = y;
+    }
+  }
+  const w = Math.max(1, x1 - x0 + 1), h = Math.max(1, y1 - y0 + 1);
+  const out = document.createElement("canvas");
+  out.width = width; out.height = Math.round(width * h / w);
+  const g = out.getContext("2d"); g.imageSmoothingQuality = "high";
+  g.drawImage(c0, x0, y0, w, h, 0, 0, out.width, out.height);
+  const blob = await new Promise(r => out.toBlob(r, "image/webp", 0.9));
+  const res = await fetch("http://127.0.0.1:8094/?name=" + encodeURIComponent(name), { method: "POST", body: blob });
+
+  /* Where the panel landed, in the finished sprite's own pixels. The game
+     needs this to lay a logo on it: an orthographic camera turned about one
+     axis projects the face to a parallelogram, which canvas can fill with a
+     plain affine transform - no texture, no UVs, any sponsor. */
+  const quad = panelQuad("Cube001_Material002_0", x0, y0, out.width / w);
+  return { size: out.width + "x" + out.height, kb: +(blob.size / 1024).toFixed(1),
+           quad, receiver: await res.text() };
+};
+
+function panelQuad(meshName, trimX, trimY, scale) {
+  let mesh = null;
+  model.traverse(c => { if (c.isMesh && c.name === meshName) mesh = c; });
+  if (!mesh) return null;
+  mesh.geometry.computeBoundingBox();
+  const bb = mesh.geometry.boundingBox, size = bb.getSize(new THREE.Vector3());
+  const order = [["x", size.x], ["y", size.y], ["z", size.z]].sort((a, b) => b[1] - a[1]);
+  const [uA] = order[0], [vA] = order[1], [tA] = order[2];      // broad, broad, thin
+  const cv = renderer.domElement;
+
+  const project = (thinAt) => [[0, 0], [1, 0], [0, 1]].map(([su, sv]) => {
+    const p = new THREE.Vector3();
+    p[uA] = bb.min[uA] + su * size[uA];
+    p[vA] = bb.min[vA] + sv * size[vA];
+    p[tA] = thinAt;
+    mesh.localToWorld(p);
+    p.project(camera);
+    return { x: ((p.x * 0.5 + 0.5) * cv.width - trimX) * scale,
+             y: ((1 - (p.y * 0.5 + 0.5)) * cv.height - trimY) * scale, z: p.z };
+  });
+
+  // both faces project to the same shape; take the one nearer the camera
+  const front = project(bb.min[tA]), back = project(bb.max[tA]);
+  const pick = (front[0].z <= back[0].z ? front : back);
+  const r1 = (n) => +n.toFixed(1);
+  return { tl: [r1(pick[0].x), r1(pick[0].y)],
+           tr: [r1(pick[1].x), r1(pick[1].y)],
+           bl: [r1(pick[2].x), r1(pick[2].y)] };
+}
+</script>
+</body>
+</html>
