@@ -551,6 +551,48 @@
   }
   .go.ghost:hover { background: color-mix(in srgb, var(--wall) 60%, transparent); }
   .go.wide { width: 100%; }
+  /* lobbies people made, and the row that makes them */
+  .lobhead {
+    font-family: var(--display); font-size: 15px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--faint); margin: 18px 0 8px;
+  }
+  .makelob { width: 100%; margin-top: 14px; }
+  .makelob.row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .makelob input {
+    flex: 0 0 auto;                 /* inputs grow by default here; this one does not */
+    font-family: var(--mono, "Azeret Mono", monospace); font-size: 15px;
+    letter-spacing: .18em; text-transform: uppercase; text-align: center;
+    width: 128px; padding: 7px 10px; color: var(--ink);
+    background: var(--field); border: 0; border-radius: 3px;
+    box-shadow: inset 0 0 0 1px var(--wall-line);
+  }
+  .makelob input::placeholder { color: var(--faint); letter-spacing: .18em; }
+  .makelob #lobname {
+    width: 100%; max-width: 320px; letter-spacing: .02em; text-transform: none;
+    display: block; margin-left: auto; margin-right: auto;
+    font-family: var(--body, inherit); text-align: center; margin-bottom: 10px;
+  }
+  .lobpick { display: flex; gap: 8px; justify-content: center; }
+  .lobpick .pick {
+    font-family: var(--display); font-size: 14px; letter-spacing: .1em;
+    text-transform: uppercase; padding: 7px 16px; color: var(--faint);
+    background: transparent; box-shadow: inset 0 0 0 1px var(--wall-line);
+  }
+  .lobpick .pick.on { color: var(--void); background: var(--amber); box-shadow: none; }
+  .lobnote { font-size: 13px; color: var(--faint); margin: 9px 0 2px; }
+  /* the code, where you are sitting in a lobby that has one */
+  .codeline {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin-bottom: 6px;
+  }
+  .codeline span {
+    font-family: var(--display); font-size: 13px; letter-spacing: .14em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .codeline b {
+    font-family: var(--mono, "Azeret Mono", monospace); font-size: 20px;
+    letter-spacing: .24em; color: var(--amber);
+  }
   .go.sm { font-size: 15px; padding: 7px 12px; }
 
   /* entrants strip on the lobby veil */
@@ -1028,9 +1070,34 @@
      boot; they stay as written where there is no server to ask, which is what
      running as an artifact looks like. */
   let JOIN_WINDOW = 10000;
-  const TABLES = ["t1", "t2", "t3", "t4", "t5", "t6"];
+  /* Six lobbies the house keeps open, plus however many people have made
+     for themselves. A made lobby is not written down anywhere: it exists for
+     exactly as long as somebody is sitting in it, which is read off the
+     lobby roster the server already sends. That is why making one costs no
+     documents, no watches and no extra messages. */
+  const LOBBIES = ["t1", "t2", "t3", "t4", "t5", "t6"];
   let TABLE_CAP = 10;
-  const tableName = id => "Table " + (TABLES.indexOf(id) + 1);
+  const isHouse = id => LOBBIES.indexOf(id) >= 0;
+  const houseName = id => "Lobby " + (LOBBIES.indexOf(id) + 1);
+  const made = new Map();            // id -> { name, priv }, rebuilt from presence
+  const lobbyName = id => !id ? ""
+    : isHouse(id) ? houseName(id)
+    : (id === S.table && S.lobbyMeta && S.lobbyMeta.name) ? S.lobbyMeta.name
+    : ((made.get(id) || {}).name || "Lobby " + String(id).toUpperCase());
+
+  /* Five characters from an alphabet with nothing in it you could mistake for
+     something else - no i, l, o, 0 or 1. Lowercase because that is what the
+     server allows in a room name, shown uppercase because codes get read out
+     loud and typed in by hand. */
+  const CODE_CHARS = "abcdefghjkmnpqrstuvwxyz23456789";
+  function newCode() {
+    const a = new Uint32Array(5);
+    window.crypto.getRandomValues(a);
+    let out = "";
+    for (let i = 0; i < 5; i++) out += CODE_CHARS[a[i] % CODE_CHARS.length];
+    return out;
+  }
+  const tidyCode = v => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
   let ENTRY_FEE = 10;
   let START_COINS = 100;
   let STAKES = [5, 10, 25];
@@ -1773,7 +1840,9 @@
     gatesPassed: 0,
     wins: 0,
     peers: [],          // everyone at my table
-    lobbyPeers: [],     // everyone on the site, for the table list
+    lobbyPeers: [],     // everyone on the site, for the lobby list
+    lobbyMeta: null,    // a made lobby's name and privacy, while we are in it
+    lastLobbyName: "",  // kept across a repaint of the create form
     table: null,
     tableRoom: null,
     roundUnsub: null,
@@ -1954,25 +2023,70 @@
   }
   function tableCounts() {
     const seats = {};
-    for (const t of TABLES) seats[t] = { ids: new Set(), busy: false };
+    const seat = id => seats[id] || (seats[id] = { ids: new Set(), busy: false });
+    for (const t of LOBBIES) seat(t);
     for (const p of S.lobbyPeers) {
       const pr = p.presence || {};
-      const slot = seats[pr.table];
-      if (!slot) continue;
+      if (!pr.table) continue;
+      const slot = seat(pr.table);
       slot.ids.add(p.by || p.peer);        // your second tab is not a second pilot
       if (pr.busy) slot.busy = true;
     }
     const out = {};
-    for (const t of TABLES) out[t] = { n: seats[t].ids.size, busy: seats[t].busy };
+    for (const id of Object.keys(seats)) out[id] = { n: seats[id].ids.size, busy: seats[id].busy };
     return out;
   }
 
-  async function joinTable(id) {
-    if (S.table === id || !TABLES.includes(id)) return;
+  /* Rebuild what is known about made lobbies from the roster. A lobby whose
+     name nobody is carrying yet stays private, so an unknown code is never
+     advertised to the whole site by accident. */
+  function scanMade() {
+    const seen = new Map();
+    for (const p of S.lobbyPeers) {
+      const pr = p.presence || {};
+      if (!pr.table || isHouse(pr.table)) continue;
+      const at = seen.get(pr.table) || { name: "", priv: true };
+      if (pr.lname) { at.name = String(pr.lname).slice(0, 24); at.priv = !!pr.priv; }
+      seen.set(pr.table, at);
+    }
+    made.clear();
+    for (const [id, v] of seen) made.set(id, v);
+    // sitting in one and someone else is carrying its name: take a copy, so
+    // the name survives whoever made it closing their tab
+    if (S.table && !isHouse(S.table)) {
+      const mine = seen.get(S.table);
+      if (mine && mine.name) S.lobbyMeta = { name: mine.name, priv: mine.priv };
+    }
+    return seen;
+  }
+
+  /* Whoever's peer id sorts first in a lobby is the one that carries its name
+     and privacy in presence. Every client works that out from the same roster
+     and arrives at the same answer, so nobody has to agree on anything, and
+     when that peer leaves the next one picks the name up. */
+  function carriesName() {
+    let mine = null, first = null;
+    for (const p of S.lobbyPeers) {
+      const pr = p.presence || {};
+      if (pr.table !== S.table) continue;
+      if (p.sameTab) mine = p.peer;
+      if (first === null || p.peer < first) first = p.peer;
+    }
+    return mine !== null && mine === first;
+  }
+
+  async function joinTable(id, meta) {
+    id = isHouse(id) ? id : tidyCode(id);
+    if (!id || S.table === id) return;
+    if (!isHouse(id) && id.length < 4) { say("a lobby code is five characters"); return; }
     if (S.phase === "open" || S.phase === "racing") { say("finish this race first"); return; }
     const counts = tableCounts();
-    if (counts[id] && counts[id].n >= TABLE_CAP) { say(tableName(id) + " is full"); return; }
-    await leaveTable(true);
+    if (counts[id] && counts[id].n >= TABLE_CAP) { say(lobbyName(id) + " is full"); return; }
+    const known = meta || made.get(id);
+    await leaveTable(true);                  // clears lobbyMeta, so set it after
+    // what we know about it: what we were told, else what the roster says
+    S.lobbyMeta = isHouse(id) || !known ? null
+      : Object.assign({ name: "", priv: true }, known);
     S.table = id;
     if (S.room && S.room.join) {
       try {
@@ -1992,7 +2106,7 @@
         }, () => {});
       } catch (e) {
         S.table = null;
-        say(e && e.code === "limit_reached" ? "that table is full" : "could not take a seat");
+        say(e && e.code === "limit_reached" ? "that lobby is full" : "could not take a seat");
         paintVeil();
         return;
       }
@@ -2005,11 +2119,25 @@
 
   async function leaveTable(quiet) {
     if (!quiet && (S.phase === "open" || S.phase === "racing")) { say("finish this race first"); return; }
+    /* Last one out of a made lobby clears its race document. Six house
+       lobbies meant six of these for ever; lobbies people make would leave
+       one behind each, and the whole store is serialised on every write - at
+       twenty thousand strays that is an eleven millisecond freeze for
+       everybody racing. The server sweeps up the ones nobody closed. */
+    const mine = S.table;
+    if (mine && !isHouse(mine) && S.db) {
+      const counts = tableCounts();
+      if (!counts[mine] || counts[mine].n <= 1) {
+        try { await S.db.doc("live/" + mine).set({ rid: "", startsAt: 0, serverNow: Date.now(), host: "" }); }
+        catch (e) {}
+      }
+    }
     if (S.roundUnsub) { try { S.roundUnsub(); } catch (e) {} S.roundUnsub = null; }
     if (S.tableRoom) { try { await S.tableRoom.leave(); } catch (e) {} }
     S.tableRoom = null;
     S.peers = [];
     S.table = null;
+    S.lobbyMeta = null;
     S.round = null; S.rid = null; S.joined = false; S.bet = null;
     S.phase = "idle"; S.result = null; S.death = null; S.dist = 0;
     exitFocus();
@@ -2091,7 +2219,7 @@
   async function openRace() {
     if (!S.db || !S.table) { soloRun(); return; }
     if (S.phase !== "idle" && S.phase !== "over") return;
-    if (!canOpenRace()) { say("wait for a second pilot at this table"); return; }
+    if (!canOpenRace()) { say("wait for a second pilot in this lobby"); return; }
     if (S.coins < ENTRY_FEE) { say("you need " + ENTRY_FEE + " coins to open a race"); return; }
     try {
       const lock = S.db.doc("locks/" + S.table);
@@ -2465,16 +2593,28 @@
   }
 
   /* ---------- presence ---------- */
-  /* the lobby only carries what the table list needs, and changes rarely */
+  /* The lobby only carries what the lobby list needs, and changes rarely.
+
+     The roster goes out whole to every person on the site, so anything put in
+     here is paid for once per person per person - it is the one quadratic
+     thing in the game. A made lobby's name therefore rides on exactly one
+     peer, not on everyone sitting in it: measured with 150 people on the
+     site, a name on every peer cost 27% more traffic, and a name on the one
+     carrier cost 3%. */
   function pushLobbyPresence() {
     if (!S.room) return;
-    S.room.presence({
+    const body = {
       who: S.name || "pilot",
       color: S.color,
       table: S.table,
       busy: S.phase === "open" || S.phase === "racing",
       wins: S.wins
-    }).catch(() => {});
+    };
+    if (S.table && !isHouse(S.table) && S.lobbyMeta && carriesName()) {
+      body.lname = S.lobbyMeta.name;
+      body.priv = S.lobbyMeta.priv ? 1 : 0;
+    }
+    S.room.presence(body).catch(() => {});
   }
 
   /* the table room carries the race itself, and only reaches that table */
@@ -3401,6 +3541,62 @@
       esc(p.name) + (p.isMe ? ' <em>you</em>' : '') + '</span>').join("") + '</div>';
   }
 
+  /* A made lobby is just a code nobody is using yet. Nothing is written down
+     when it is created - the lobby comes into being because somebody is
+     sitting in it with its name on their presence, and it is gone when the
+     last of them leaves. */
+  async function makeLobby() {
+    if (!S.canBuy) { say("sign in with google to make a lobby"); return; }
+    const box = $("lobname");
+    const name = String((box && box.value) || "").trim().slice(0, 24) || "Someone's lobby";
+    const taken = new Set([...made.keys()]);
+    let code = newCode();
+    for (let i = 0; i < 8 && taken.has(code); i++) code = newCode();
+    S.lastLobbyName = "";
+    making = false;
+    await joinTable(code, { name, priv: makePriv });
+    if (S.table === code) say(makePriv ? "private lobby " + code.toUpperCase() + " - share the link"
+                                       : "lobby open - it is on the list now");
+  }
+
+  /* A shared link drops you straight into the lobby it names. It is tried
+     once the channel is up, because taking a seat needs a room to take it in,
+     and the code is taken out of the address bar afterwards so a reload does
+     not drag you back in after you have left. */
+  function followLobbyLink() {
+    let asked = "";
+    try { asked = tidyCode(new URLSearchParams(location.search).get("lobby")); } catch (e) {}
+    if (!asked || asked.length < 4) return;
+    picking = true;
+    let tries = 0;
+    const go = () => {
+      if (S.table) return;
+      if (!S.room || !S.db) {
+        if (++tries > 40) return;              // eight seconds, then give up quietly
+        return setTimeout(go, 200);
+      }
+      joinTable(asked);
+      try {
+        const u = new URL(location.href);
+        u.searchParams.delete("lobby");
+        history.replaceState(null, "", u.pathname + u.search + u.hash);
+      } catch (e) {}
+    };
+    setTimeout(go, 300);
+  }
+
+  const lobbyLink = id =>
+    location.origin + location.pathname + "?lobby=" + encodeURIComponent(id);
+
+  function copyLobbyLink() {
+    if (!S.table || isHouse(S.table)) return;
+    const url = lobbyLink(S.table);
+    const done = () => say("link copied - anyone with it lands in this lobby");
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, () => say(url));
+    } else say(url);
+  }
+
   /* The front page asks for one thing. The tables are a step in from it,
      because a list of six of them is not what somebody arriving wants to
      read first. `picking` is which of the two the veil is showing. */
@@ -3498,7 +3694,7 @@
                 : '<button class="go" disabled>Waiting for a second pilot</button>')
             : '<button class="go" data-act="lobby">Back to lobby</button>') +
           (S.table ? '' : '<button class="go ghost" data-act="solo">Single player</button>') +
-          (S.table ? '<button class="go ghost" data-act="leave">Change table</button>' : '') +
+          (S.table ? '<button class="go ghost" data-act="leave">Change lobby</button>' : '') +
         '</div>' +
         noteLine());
       return;
@@ -3509,7 +3705,12 @@
     // idle, at a table
     veil.innerHTML = wrapHTML(
       '<h1 class="brand"><img src="' + LOGO + '" alt="Cursor Clash" decoding="async"></h1>' +
-      '<div class="verdict">' + esc(tableName(S.table)) + ' &middot; ' +
+      (isHouse(S.table) ? '' :
+        '<div class="codeline">' +
+          '<span>Code</span><b>' + esc(String(S.table).toUpperCase()) + '</b>' +
+          '<button class="go sm ghost" data-act="copylink">Copy link</button>' +
+        '</div>') +
+      '<div class="verdict">' + esc(lobbyName(S.table)) + ' &middot; ' +
         pilotsHere() + (pilotsHere() === 1 ? ' pilot' : ' pilots') + ' here</div>' +
       '<div class="rules">' +
         '<div><b>Guide your cursor</b> down the channel as it scrolls.</div>' +
@@ -3527,7 +3728,7 @@
         (canOpenRace()
           ? '<button class="go" data-act="open">Open a race &middot; ' + ENTRY_FEE + '</button>'
           : '<button class="go" disabled>Waiting for a second pilot</button>') +
-        '<button class="go ghost" data-act="leave">Change table</button>' +
+        '<button class="go ghost" data-act="leave">Change lobby</button>' +
         '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
       '</div>' +
       '<p id="veilNote">' + (S.db
@@ -3569,24 +3770,80 @@
       noteLine());
   }
 
+  /* Lobbies people made, as far as the roster knows about them. Private ones
+     are left out: they are reached by their code, not by being listed. */
+  function openLobbiesHTML(counts) {
+    scanMade();                       // cheap, and the list is painted rarely
+    const rows = [];
+    for (const [id, m] of made) {
+      if (m.priv || !m.name) continue;
+      const c = counts[id] || { n: 0, busy: false };
+      if (!c.n) continue;                        // it is gone when the last pilot leaves
+      const full = c.n >= TABLE_CAP;
+      const status = c.busy ? "racing" : "waiting";
+      rows.push('<button class="tcard' + (full ? " full" : "") + '" data-table="' + id + '"' +
+        (full ? " disabled" : "") + '>' +
+        '<span class="tname">' + esc(m.name) + '</span>' +
+        '<span class="tnum">' + c.n + '<em>/' + TABLE_CAP + '</em></span>' +
+        '<span class="tstate ' + status + '">' + status + '</span></button>');
+    }
+    if (!rows.length) return "";
+    return '<h3 class="lobhead">Made by pilots</h3>' +
+      '<div class="tables">' + rows.join("") + '</div>';
+  }
+
+  /* Making one is for signed-in players: a lobby outlives the tab that made
+     it only as long as someone is sitting in it, and a guest account does not
+     survive a browser clearing its storage. */
+  function makeLobbyHTML() {
+    if (making) {
+      return '<div class="makelob">' +
+        '<input id="lobname" type="text" maxlength="24" placeholder="Name your lobby" ' +
+          'value="' + esc(S.lastLobbyName || "") + '">' +
+        '<div class="lobpick">' +
+          '<button class="pick' + (makePriv ? "" : " on") + '" data-act="mkpub">Public</button>' +
+          '<button class="pick' + (makePriv ? " on" : "") + '" data-act="mkpriv">Private</button>' +
+        '</div>' +
+        '<p class="lobnote">' + (makePriv
+          ? "Not listed. It gets a five character code, and a link that carries it."
+          : "Listed here for everyone while somebody is sitting in it.") + '</p>' +
+        '<div class="btnrow">' +
+          '<button class="go sm" data-act="mkgo">Create</button>' +
+          '<button class="go sm ghost" data-act="mkoff">Cancel</button>' +
+        '</div>' +
+      '</div>';
+    }
+    return '<div class="makelob row">' +
+      (S.canBuy
+        ? '<button class="go sm" data-act="mkon">Create a lobby</button>'
+        : '<button class="go sm" disabled title="sign in to make one">Create a lobby</button>') +
+      '<input id="joincode" type="text" maxlength="5" placeholder="CODE" autocomplete="off">' +
+      '<button class="go sm ghost" data-act="joincode">Join</button>' +
+    '</div>';
+  }
+
+  let making = false, makePriv = false;
+
   function paintTables() {
     const counts = tableCounts();
     const here = peopleHere();
-    const cards = TABLES.map(id => {
+    const cards = LOBBIES.map(id => {
       const c = counts[id] || { n: 0, busy: false };
       const full = c.n >= TABLE_CAP;
       const status = c.busy ? "racing" : c.n ? "waiting" : "empty";
       return '<button class="tcard' + (full ? " full" : "") + '" data-table="' + id + '"' +
         (full ? " disabled" : "") + '>' +
-        '<span class="tname">' + tableName(id) + '</span>' +
+        '<span class="tname">' + esc(lobbyName(id)) + '</span>' +
         '<span class="tnum">' + c.n + '<em>/' + TABLE_CAP + '</em></span>' +
         '<span class="tstate ' + status + '">' + status + '</span></button>';
     }).join("");
     veil.innerHTML = wrapHTML(
       '<h1 class="brand"><img src="' + LOGO + '" alt="Cursor Clash" decoding="async"></h1>' +
-      '<p>Pick a table. Each one runs its own race on its own channel, up to ' +
+      '<p>Pick a lobby. Each one runs its own race on its own channel, up to ' +
         TABLE_CAP + ' pilots. Opening a race there starts a ' + S.gateSecs + ' second gate.</p>' +
       '<div class="tables">' + cards + '</div>' +
+      openLobbiesHTML(counts) +
+      makeLobbyHTML() +
       walletLine() +
       '<div class="verdict">' + here + (here === 1 ? " pilot" : " pilots") + ' on the site</div>' +
       '<div class="btnrow">' +
@@ -3620,6 +3877,25 @@
     const b = e.target.closest("button[data-act]");
     if (!b) return;
     const a = b.dataset.act;
+    if (a === "mkon") { making = true; paintVeil(); return; }
+    if (a === "mkoff") { making = false; paintVeil(); return; }
+    if (a === "mkpub" || a === "mkpriv") {
+      const box = $("lobname");
+      if (box) S.lastLobbyName = box.value;      // keep what they have typed
+      makePriv = a === "mkpriv";
+      paintVeil();
+      return;
+    }
+    if (a === "mkgo") { makeLobby(); return; }
+    if (a === "joincode") {
+      const box = $("joincode");
+      const code = tidyCode(box && box.value);
+      if (code.length < 4) { say("a lobby code is five characters"); return; }
+      making = false;
+      joinTable(code);
+      return;
+    }
+    if (a === "copylink") { copyLobbyLink(); return; }
     if (a === "multi") { picking = true; paintVeil(); return; }
     if (a === "home") { picking = false; paintVeil(); return; }
     // leaving a table puts you back on the list, not out on the front page
@@ -3740,7 +4016,7 @@
     $("coinNum").textContent = S.coins;
     $("gemNum").textContent = S.gems;
     $("tagline").textContent = S.solo ? "practice run"
-      : S.table ? tableName(S.table).toLowerCase() + " / last pointer standing"
+      : S.table ? lobbyName(S.table).toLowerCase() + " / last pointer standing"
       : "last pointer standing";
 
     // betting panel: only for people not in the race, while one is live
@@ -4040,9 +4316,27 @@
     setNet(room.connected(), room.connected() ? "channel live" : "connecting");
     room.onConnection(c => setNet(c, c ? "channel live" : "reconnecting"),
       () => setNet(false, "solo channel"));
+    /* The roster lands up to 25 times a second on a busy site, and rebuilding
+       the veil throws away whatever is half-typed in the lobby name or code
+       box. So the list is only redrawn when what it would show has actually
+       changed - which also keeps the cost of a longer list off the hot path. */
+    let lastShape = "", wasCarrier = false;
     room.onPeers(ch => {
       S.lobbyPeers = ch.peers.slice();
-      if (!S.table) paintVeil();
+      scanMade();
+      /* the peer carrying this lobby's name may have just closed their tab,
+         in which case the next one along is now us and has to start saying so */
+      if (S.table && !isHouse(S.table)) {
+        const now = carriesName();
+        if (now !== wasCarrier) { wasCarrier = now; if (now) pushLobbyPresence(); }
+      } else wasCarrier = false;
+      if (!S.table) {
+        const counts = tableCounts();
+        const shape = Object.keys(counts).sort().map(id =>
+          id + ":" + counts[id].n + (counts[id].busy ? "!" : "") +
+          ((made.get(id) || {}).name || "")).join("|") + "/" + peopleHere();
+        if (shape !== lastShape) { lastShape = shape; paintVeil(); }
+      }
       paintRail();
     }, () => { S.lobbyPeers = []; setNet(false, "solo channel"); });
 
@@ -4099,6 +4393,7 @@
     loadProfile();
     loadRules();             // the server's tunables beat the page's defaults
     setUpRegions();          // quiet where there is only one server to play on
+    followLobbyLink();       // ?lobby=<code>, from somebody who shared theirs
   }
 
   loadLocal();

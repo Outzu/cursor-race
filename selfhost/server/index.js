@@ -489,6 +489,33 @@ setInterval(() => {
   }
 }, 500);
 
+/* Lobbies people make themselves leave a live/ document behind, and nothing
+   on the way out is guaranteed to run - a closed tab does not get to clean up
+   after itself. Left alone they only accumulate, and every write serialises
+   the whole store: six documents is nothing, twenty thousand is an eleven
+   millisecond freeze on the event loop for everyone racing. So anything that
+   is not one of the house lobbies, has no race in it and has been quiet for
+   an hour is thrown away. The six are left where they are. */
+const HOUSE = new Set(["t1", "t2", "t3", "t4", "t5", "t6"]);
+const STRAY_AFTER = Number(process.env.LOBBY_STRAY_MS || 60 * 60 * 1000);
+const SWEEP_EVERY = Number(process.env.LOBBY_SWEEP_MS || 10 * 60 * 1000);
+
+setInterval(() => {
+  const now = Date.now();
+  let gone = 0;
+  for (const path of store.list("live/")) {
+    const id = path.slice(5);
+    if (HOUSE.has(id) || rooms.has("cursorrace-" + id) || rounds.has(id)) continue;
+    const doc = store.get(path);
+    if (!doc || doc.rid) continue;                   // a race is still on it
+    const quietSince = Number(doc.serverNow) || 0;
+    if (now - quietSince < STRAY_AFTER) continue;
+    store.del(path);
+    gone++;
+  }
+  if (gone) console.log("swept %d empty %s", gone, gone === 1 ? "lobby" : "lobbies");
+}, SWEEP_EVERY);
+
 /* ---------- websocket protocol ---------- */
 const PATH_OK = /^[A-Za-z0-9_\-.~:@+]+(\/[A-Za-z0-9_\-.~:@+]+)*$/;
 const ROOM_OK = /^[a-z0-9][a-z0-9_.-]{0,47}$/;
