@@ -4,9 +4,17 @@ Exports the game embeds, kept here with their sources so they can be re-cut.
 
 ## Ours
 
-- `logo-source.png` / `logo.webp` - the wordmark on the home screen
+- `logo-source.png` / `logo.webp` - the mascot mark on the home screen
 - `icon-source.png` / `favicon.png` - the tab icon
 - `homedirect.svg` / `homedirect.webp` - the HomeDirect sponsor board
+- `sfx/prepare.mp3` - the countdown cue, mono 64k; multiplayer only, since a
+  single-player run has no gate to count down
+
+The logo and the cue are embedded in `cursor-race.html` as data URIs rather
+than fetched, so the game sounds and looks the same run as an artifact, where
+there is no server to fetch them from. Re-cut them to the sizes they ship at:
+the logo is the source cropped to its alpha bounds and resized to 700px wide
+at WebP q80, and the cue is `ffmpeg -ac 1 -b:a 64k`.
 
 ## Not ours
 
