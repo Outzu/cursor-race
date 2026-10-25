@@ -1960,6 +1960,7 @@
      They stand clear of the wall, and they are drawn before the channel is,
      so one that strays never covers the part you are flying through. */
   const PROP_EVERY = 520;
+  const PROP_SCALE = 1.8;                   // they were drawn small; this is what you see them at
   const propCache = new Map();
 
   const PROPS = {
@@ -1985,6 +1986,13 @@
       }
     ],
     atlas: [
+      function wood(c, x, y, r) {
+        c.fillStyle = "rgba(146,176,122,.35)";
+        for (let i = 0; i < 5; i++) {
+          const a = i * 1.26 + r * 6, rr = 4 + (i % 2) * 2;
+          c.beginPath(); c.arc(x + Math.cos(a) * 5, y - 4 + Math.sin(a) * 4, rr, 0, TAU); c.fill();
+        }
+      },
       function village(c, x, y, r) {
         c.fillStyle = "rgba(190,160,110,.5)";
         for (let i = 0; i < 4; i++)
@@ -1997,6 +2005,16 @@
       }
     ],
     neon: [
+      function tower(c, x, y, r) {
+        const w = 12 + Math.floor(r * 3) * 3, h = 30 + Math.floor(r * 8) * 3;
+        c.fillStyle = "#1a1230";
+        c.fillRect(x - w / 2, y - h, w, h);
+        c.strokeStyle = r > .5 ? "rgba(255,62,165,.7)" : "rgba(0,199,253,.6)";
+        c.lineWidth = 1.2;
+        c.strokeRect(x - w / 2 + .5, y - h + .5, w - 1, h - 1);   // the edge-lit outline
+        c.fillStyle = c.strokeStyle;
+        for (let yy = y - h + 4; yy < y - 3; yy += 6) c.fillRect(x - w / 2 + 3, yy, w - 6, 1.2);
+      },
       function sign(c, x, y, r) {
         const hot = r > .5;
         c.fillStyle = hot ? "rgba(255,62,165,.85)" : "rgba(0,199,253,.8)";
@@ -2014,6 +2032,17 @@
       }
     ],
     streets: [
+      function building(c, x, y, r) {
+        const w = 14 + Math.floor(r * 3) * 3, h = 22 + Math.floor(r * 10) * 2.6;
+        c.fillStyle = r > .5 ? "#2a3042" : "#232838";
+        c.fillRect(x - w / 2, y - h, w, h);
+        c.fillStyle = "#1a1e29";
+        c.fillRect(x - w / 2, y - h, w, 2);               // the parapet
+        c.fillStyle = "rgba(255,226,150,.55)";             // lit windows
+        for (let yy = y - h + 5; yy < y - 4; yy += 5)
+          for (let xx = x - w / 2 + 3; xx < x + w / 2 - 2; xx += 4.5)
+            if (((xx * 7 + yy * 13) | 0) % 3) c.fillRect(xx, yy, 2, 2.6);
+      },
       function car(c, x, y, r) {
         const body = ["#8a3b3b", "#2f4d7a", "#5c5c64", "#7a6a35"][Math.floor(r * 4) % 4];
         c.fillStyle = body;
@@ -2039,7 +2068,7 @@
     const rnd = mulberry32(hashStr(key));
     list = [];
     if (kinds) {
-      const many = rnd() < .62 ? 1 : 2;
+      const many = 2 + (rnd() < .5 ? 1 : 0);          // two or three a stretch
       for (let i = 0; i < many; i++) {
         const u = n * PROP_EVERY + rnd() * PROP_EVERY;
         const side = rnd() < .5 ? -1 : 1;
@@ -3176,7 +3205,9 @@
         const x = centerX(t.u, wd) + t.side * (halfW(t.u) + t.out);
         if (x < x0 - 40 || x > x1 + 40) continue;
         ctx.save();
-        t.draw(ctx, x, y, t.r);
+        ctx.translate(x, y);
+        ctx.scale(PROP_SCALE, PROP_SCALE);         // drawn at unit size, shown larger
+        t.draw(ctx, 0, 0, t.r);
         ctx.restore();
       }
     }
@@ -4965,6 +4996,7 @@
   pickFrom("grounds", $("grounds"));
   $("skinHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("skins"); });
   $("tailHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("tails"); });
+  $("groundHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("grounds"); });
 
   /* the chosen head doubles as the page's own mouse cursor */
   let cursorUrl = "";

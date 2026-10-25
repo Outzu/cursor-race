@@ -21,19 +21,25 @@ function maxDistAt(startedAt, now) {
 }
 
 /* Prices, mirroring the game file. The server charges for anything a player
-   newly owns, so these have to agree with the page. */
+   newly owns, so these have to agree with the page - and for a while they did
+   not: tails went up tenfold on the page and Arrow and Dot swapped places,
+   and this table kept charging the old numbers underneath. test/prices.test.js
+   now reads the page and fails if the two ever drift again. */
 const SKIN_COST = {
-  dot: 0, ring: 40, arrow: 90, cross: 160, blade: 260, glow: 400,
+  arrow: 0, ring: 40, dot: 90, cross: 160, blade: 260, glow: 400,
   comet: 560, prism: 760, halo: 1000, spectrum: 1300, bullion: 1700,
   kamish: 2000, azure: 2400, mcsword: 2800
 };
 const TAIL_COST = {
-  none: 0, wisp: 0, flare: 8, bubble: 12, rainbow: 18, snowflake: 22,
-  gold: 35, fairydust: 45, sparks: 60, canvas: 70, smoke: 90
+  none: 0, wisp: 0, flare: 80, bubble: 120, rainbow: 180, snowflake: 220,
+  gold: 350, fairydust: 450, sparks: 600, canvas: 700, smoke: 900
+};
+const GROUND_COST = {
+  plain: 0, meadow: 300, atlas: 800, neon: 1500, streets: 2500
 };
 
 module.exports = {
-  W, H, distAt, maxDistAt, SKIN_COST, TAIL_COST,
+  W, H, distAt, maxDistAt, SKIN_COST, TAIL_COST, GROUND_COST,
   JOIN_WINDOW: Number(process.env.JOIN_WINDOW || 30000),
   ENTRY_FEE: Number(process.env.ENTRY_FEE || 10),
   START_COINS: Number(process.env.START_COINS || 100),
