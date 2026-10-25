@@ -417,13 +417,29 @@
   /* The mark carries its own glow and its corners are transparent, so it needs
      no frame - just room, and a cap so it never eats a small screen. */
   .veil h1.brand { line-height: 0; }
-  .veil h1.brand img { width: min(430px, 74vw); height: auto; display: block; margin: 0 auto;
-    max-height: 32vh; object-fit: contain; }
+  .veil h1.brand img { width: min(301px, 52vw); height: auto; display: block; margin: 0 auto;
+    max-height: 22vh; object-fit: contain; }
   .veil p {
     margin: 0;
     max-width: 68ch;
     color: var(--dim);
     line-height: 1.55;
+  }
+  /* The line under the mark, and the one that holds you on the grid: a
+     verdict, only larger. Same face, same colour, same tracking as the
+     verdicts elsewhere on the veil - the size is the only thing that sets
+     them apart. */
+  .veil h1.brand + p, .veil p.callout {
+    font-family: var(--data);
+    text-transform: uppercase;
+    letter-spacing: .22em;
+    line-height: 1.8;
+    color: var(--dim);
+    font-size: clamp(12px, 1.6vh, 15px);
+    /* tracked uppercase runs wider than the 68ch measure the other
+       paragraphs use, and the sentence was breaking three pixels short of
+       fitting; the line breaks here are the ones written into the markup */
+    max-width: 100%;
   }
   .veil .count {
     font-family: var(--display);
@@ -548,20 +564,28 @@
     text-transform: uppercase; color: var(--faint); margin: 18px 0 8px;
   }
   .makelob { width: 100%; margin-top: 14px; }
-  .makelob.row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
-  .makelob input {
-    flex: 0 0 auto;                 /* inputs grow by default here; this one does not */
-    font-family: var(--mono, "Azeret Mono", monospace); font-size: 15px;
-    letter-spacing: .18em; text-transform: uppercase; text-align: center;
-    width: 128px; padding: 7px 10px; color: var(--ink);
+  .makelob.joinrow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+  /* The general input rule sits further down this sheet, so an equally
+     specific selector would lose the tie to it and the box would stretch.
+     Naming the attribute as well settles it. Five characters wide, and the
+     same height as the buttons either side of it. */
+  .makelob input[type="text"] {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    font-family: var(--mono, "Azeret Mono", monospace); font-size: 20px;
+    letter-spacing: .2em; text-indent: .2em;   /* the tracking pads the right edge */
+    text-transform: uppercase; text-align: center;
+    width: 150px; padding: 0 12px; color: var(--ink);
+    align-self: stretch;          /* the buttons decide how tall the row is */
     background: var(--field); border: 0; border-radius: 3px;
     box-shadow: inset 0 0 0 1px var(--wall-line);
   }
-  .makelob input::placeholder { color: var(--faint); letter-spacing: .18em; }
+  .makelob input::placeholder { color: var(--faint); letter-spacing: .2em; }
   .makelob #lobname {
-    width: 100%; max-width: 320px; letter-spacing: .02em; text-transform: none;
-    display: block; margin-left: auto; margin-right: auto;
-    font-family: var(--body, inherit); text-align: center; margin-bottom: 10px;
+    width: 100%; max-width: 340px; height: auto; padding: 12px 14px;
+    font-family: var(--body, inherit); font-size: 17px;
+    letter-spacing: .02em; text-transform: none; text-indent: 0; text-align: center;
+    display: block; margin: 0 auto 12px;
   }
   .lobpick { display: flex; gap: 8px; justify-content: center; }
   .lobpick .pick {
@@ -932,10 +956,16 @@
     .stat { gap: 12px; font-size: 10px; letter-spacing: .08em; }
     .btnrow { gap: 8px; }
     .go { font-size: 17px; padding: 10px 14px; }
+    .makelob.joinrow { gap: 8px; }
+    .makelob.joinrow .mkbtn { flex: 1 0 100%; }    /* a line to itself */
+    .makelob input[type="text"] { width: 126px; font-size: 17px; letter-spacing: .16em; }
     .entrants { gap: 6px; }
-    /* the leaderboard and the music button own the top corners on a phone, so
-       the mark starts below them rather than behind them */
-    .veil h1.brand img { margin-top: 42px; }
+    /* The leaderboard and the music button own the top corners on a phone, so
+       the mark starts below them rather than behind them. It is capped harder
+       here than on a desktop because the mark is square: at the width it is
+       given that makes it half as tall again as the old landscape one, which
+       was enough to push the lobby list off the top of the screen. */
+    .veil h1.brand img { margin-top: 42px; max-height: 15vh; }
     #ladderHud { width: min(150px, 42vw); padding: 7px 8px 8px; right: calc(max(10px, env(safe-area-inset-right, 0px)) + 46px); }
     #ladderHud .lrow { font-size: 10px; gap: 6px; }
     #ladderHud .lrow b { font-size: 10px; }
@@ -970,7 +1000,7 @@
     <div class="card">
       <button class="go ghost sm backto" id="toLobby">&larr; Back to lobby</button>
       <div class="brand">CURSOR <span>CLASH</span></div>
-      <div class="tagline" id="tagline">last pointer standing</div>
+      <div class="tagline" id="tagline">last cursor standing</div>
       <div class="link" style="margin-top:10px"><span class="dot" id="netDot"></span><span id="netText">solo channel</span></div>
     </div>
 
@@ -3676,12 +3706,16 @@
             '<p>Watching this one. Back a pilot from the rail while they are still flying.</p>');
           return;
         }
-        veil.innerHTML = wrapHTML(lightsHTML(secs) +
-          '<p>' + (S.joined
+        /* above the lights, which puts it clear of the chequered band - it
+           used to land right across it, which is the one thing on screen it
+           is telling you to get behind */
+        veil.innerHTML = wrapHTML(
+          '<p class="callout">' + (S.joined
             ? (TOUCH
                 ? "Drag anywhere to steer. The grid holds you until the lights go out."
                 : "Put your cursor in the channel, behind the grid line.")
-            : "Watching this one.") + '</p>');
+            : "Watching this one.") + '</p>' +
+          lightsHTML(secs));
         return;
       }
       const pot = roundField().length * ENTRY_FEE;
@@ -3752,7 +3786,9 @@
                 ? '<button class="go" data-act="open">Open a race</button>'
                 : '<button class="go" disabled>Waiting for a second pilot</button>')
             : '<button class="go" data-act="lobby">Back to lobby</button>') +
-          (S.table ? '' : '<button class="go ghost" data-act="solo">Single player</button>') +
+          /* a run just ended, so this is not an invitation to try single
+             player - it is the offer to go round again */
+          (S.table ? '' : '<button class="go ghost" data-act="solo">Play again</button>') +
           (S.table ? '<button class="go ghost" data-act="leave">Change lobby</button>' : '') +
         '</div>' +
         noteLine());
@@ -3775,7 +3811,7 @@
         '<div><b>Guide your cursor</b> down the channel as it scrolls.</div>' +
         '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
         '<div><b>The channel narrows and speeds up</b> the further you get.</div>' +
-        '<div><b>Last pointer still inside takes the whole pot.</b></div>' +
+        '<div><b>Last cursor still inside takes the whole pot.</b></div>' +
         '<div><b>Opening a race starts a ' + S.gateSecs + ' second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
         '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
@@ -3812,8 +3848,8 @@
     const here = peopleHere();
     veil.innerHTML = wrapHTML(
       '<h1 class="brand"><img src="' + LOGO + '" alt="Cursor Clash" decoding="async"></h1>' +
-      '<p>Steer a cursor down a channel that keeps narrowing. The last pointer ' +
-        'still inside takes the pot.</p>' +
+      '<p>Steer a cursor down a channel that keeps narrowing.<br>' +
+        'The last cursor still inside takes the pot.</p>' +
       '<div class="btnrow">' +
         '<button class="go multi" data-act="multi">Multiplayer</button>' +
       '</div>' +
@@ -3867,17 +3903,17 @@
           ? "Not listed. It gets a five character code, and a link that carries it."
           : "Listed here for everyone while somebody is sitting in it.") + '</p>' +
         '<div class="btnrow">' +
-          '<button class="go sm" data-act="mkgo">Create</button>' +
-          '<button class="go sm ghost" data-act="mkoff">Cancel</button>' +
+          '<button class="go" data-act="mkgo">Create</button>' +
+          '<button class="go ghost" data-act="mkoff">Cancel</button>' +
         '</div>' +
       '</div>';
     }
-    return '<div class="makelob row">' +
+    return '<div class="makelob joinrow">' +
       (S.canBuy
-        ? '<button class="go sm" data-act="mkon">Create a lobby</button>'
-        : '<button class="go sm" disabled title="sign in to make one">Create a lobby</button>') +
+        ? '<button class="go mkbtn" data-act="mkon">Create a lobby</button>'
+        : '<button class="go mkbtn" disabled title="sign in to make one">Create a lobby</button>') +
       '<input id="joincode" type="text" maxlength="5" placeholder="CODE" autocomplete="off">' +
-      '<button class="go sm ghost" data-act="joincode">Join</button>' +
+      '<button class="go ghost" data-act="joincode">Join</button>' +
     '</div>';
   }
 
@@ -4075,8 +4111,8 @@
     $("coinNum").textContent = S.coins;
     $("gemNum").textContent = S.gems;
     $("tagline").textContent = S.solo ? "practice run"
-      : S.table ? lobbyName(S.table).toLowerCase() + " / last pointer standing"
-      : "last pointer standing";
+      : S.table ? lobbyName(S.table).toLowerCase() + " / last cursor standing"
+      : "last cursor standing";
 
     // betting panel: only for people not in the race, while one is live
     const canBet = !S.joined && !S.solo && (S.phase === "open" || S.phase === "watching");
