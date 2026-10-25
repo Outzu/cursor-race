@@ -478,6 +478,7 @@ function ledger(uid, pres, peerId, table) {
     if (!G.STAKES.includes(amt)) return;
     if (balance(uid) < amt) return;
     if (r.settled) return;
+    if (r.lastOne) return;                  // decided; nothing left to back
     // resolve the backed tab to a player now, while that peer is still around,
     // so a second tab of your own cannot be backed and cannot pay you out
     const target = peers.get(bet.on);
@@ -492,7 +493,11 @@ function settle(r) {
   r.settled = true;
   const list = [...r.entrants.entries()].map(([uid, e]) => Object.assign({ uid }, e));
   const racing = list.filter(e => e.state === "racing");
-  const winner = racing.length === 1 ? racing[0] : list.slice().sort((a, b) => b.dist - a.dist)[0];
+  /* Whoever was last in the channel won, even though they have since clipped
+     a wall themselves - they outlived the field, and the extra distance they
+     flew after that was for the board, not for the pot. */
+  const winner = (r.lastOne && list.find(e => e.uid === r.lastOne)) ||
+    (racing.length === 1 ? racing[0] : list.slice().sort((a, b) => b.dist - a.dist)[0]);
   const pot = list.length * G.ENTRY_FEE;
 
   for (const e of list) {
@@ -515,7 +520,9 @@ function settle(r) {
     field: list.map(e => ({ name: e.name, dist: Math.round(e.dist) })),
     bets: [...r.bets.values()].map(b => ({ amt: b.amt, won: !!(winner && b.onUid === winner.uid) }))
   });
-  console.log("%s: race %s won by %s, pot %d", r.table, r.rid, winner ? winner.name : "nobody", pot);
+  console.log("%s: race %s won by %s, pot %d%s", r.table, r.rid,
+    winner ? winner.name : "nobody", pot,
+    r.lastOne ? " (last one in, flew to " + Math.round((winner ? winner.dist : 0) / 10) + " m)" : "");
 
   setTimeout(() => {
     if (rounds.get(r.table) === r) {
@@ -563,7 +570,20 @@ setInterval(() => {
       for (const e of list) if (e.state === "ready") e.state = "out";
     }
     const racing = list.filter(e => e.state === "racing");
-    if (racing.length === 0 || (list.length >= 2 && racing.length === 1)) settle(r);
+
+    /* The last pilot in the channel has won it, and the pot is theirs whatever
+       happens next - there is nobody left to take it from them. But a race is
+       a distance as well as a result, and there is a board with their name on
+       it, so the channel stays open and they fly on until they clip something.
+       What stops the moment it is decided is the betting: there is nothing
+       left to have an opinion about. */
+    if (list.length >= 2 && racing.length === 1 && !r.lastOne) {
+      /* the loop walks values, which carry no uid of their own - the uid is
+         the key, so it has to be looked up by identity */
+      for (const [uid, e] of r.entrants) if (e === racing[0]) { r.lastOne = uid; break; }
+      console.log("%s: race %s is decided, %s flies on", r.table, r.rid, racing[0].name);
+    }
+    if (racing.length === 0) settle(r);
     else if (now > r.startsAt + 300000) settle(r);       // nobody should fly for 5 minutes
   }
 }, 500);

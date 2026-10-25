@@ -75,6 +75,9 @@
     text-transform: uppercase;
     color: var(--faint);
     pointer-events: none;
+    /* the readouts sit over whatever ground is worn, and some of them are
+       pale; a dark halo keeps the text legible without lightening it */
+    text-shadow: 0 1px 2px rgba(4, 10, 32, .95), 0 0 6px rgba(4, 10, 32, .8);
   }
   .corner.tl { top: 10px; left: 12px; }
   .corner.tr { top: 10px; right: 12px; text-align: right; }
@@ -1099,6 +1102,12 @@
       <div class="hint" id="tailHint">gems are picked up on the channel</div>
     </div>
 
+    <div class="card">
+      <h2><span>Ground</span><span id="groundTotal">0 coins</span></h2>
+      <div class="skins" id="grounds"></div>
+      <div class="hint" id="groundHint">yours alone &mdash; everyone else flies over the plain one</div>
+    </div>
+
     <div class="card scroller">
       <h2><span id="boardTitle">On the channel</span><span id="boardCount"></span></h2>
       <div class="grid-list" id="board"></div>
@@ -1811,6 +1820,243 @@
                color: col => withA(col, .4) } }
   ];
   const tailById = id => TAILS.find(t => t.id === id) || TAILS[0];
+
+  /* ---------- the ground you fly over ----------
+
+     What is outside the channel is one fillRect with a repeating pattern -
+     it already was, for the default hatch - so a different ground costs
+     exactly what the old one did, whatever is drawn on the tile. Each is
+     built once, the first time it is worn, and kept.
+
+     Only the ground and the channel floor change. The walls stay the same
+     blue for everyone, because they are the one thing you have to read at
+     speed, and what a cursor can see should never be what a cursor can do.
+     Which is also why this is yours alone: it rides in nobody's presence and
+     goes to nobody else. Other pilots fly over the plain one. */
+  /* A bigger tile repeats less obviously and costs the same to paint with -
+     it is one fillRect either way, and sixty-four kilobytes of texture. */
+  const TILE = 128;
+  function tile(paint) {
+    const c = document.createElement("canvas");
+    c.width = c.height = TILE;
+    paint(c.getContext("2d"), TILE);
+    return c;
+  }
+  /* seeded, so a ground looks the same every time it is built */
+  const sprinkle = (g, seed, n, fn) => {
+    const rnd = mulberry32(hashStr(seed));
+    for (let i = 0; i < n; i++) {
+      const x = rnd() * TILE, y = rnd() * TILE, a = rnd(), b = rnd();
+      /* nine times over, so whatever runs off one edge arrives at the
+         opposite one and the tile has no seam. Nine times nothing: this
+         happens once, when the ground is first worn. */
+      for (let dx = -1; dx <= 1; dx++)
+        for (let dy = -1; dy <= 1; dy++) fn(g, x + dx * TILE, y + dy * TILE, a, b);
+    }
+  };
+
+  const GROUNDS = [
+    { id: "plain", name: "Plain", cost: 0, floor: "#0c1324", paint(g, n) {
+      g.fillStyle = "#18233b"; g.fillRect(0, 0, n, n);
+      g.strokeStyle = "#1f2c49"; g.lineWidth = 2;
+      g.beginPath();
+      for (let k = -n; k < n * 2; k += 10) { g.moveTo(k, n); g.lineTo(k + n, 0); }
+      g.stroke();
+    } },
+
+    { id: "meadow", name: "Meadow", cost: 300, floor: "#0e2213", paint(g, n) {
+      g.fillStyle = "#1b3d22"; g.fillRect(0, 0, n, n);
+      sprinkle(g, "meadow-dark", 104, (c, x, y, a) => {
+        c.fillStyle = "rgba(14,38,19,.7)";
+        c.beginPath(); c.ellipse(x, y, 5 + a * 7, 3 + a * 4, a * 3, 0, TAU); c.fill();
+      });
+      sprinkle(g, "meadow-blade", 360, (c, x, y, a, b) => {
+        c.strokeStyle = a > .7 ? "#3a7a42" : "#2a5c31";
+        c.lineWidth = 1.2;
+        c.beginPath(); c.moveTo(x, y);
+        c.quadraticCurveTo(x + (b - .5) * 5, y - 4 - a * 4, x + (b - .5) * 9, y - 7 - a * 6);
+        c.stroke();
+      });
+    } },
+
+    { id: "atlas", name: "Atlas", cost: 800, floor: "#141c2e", paint(g, n) {
+      g.fillStyle = "#1d2639"; g.fillRect(0, 0, n, n);
+      g.strokeStyle = "rgba(120,140,180,.10)"; g.lineWidth = 1;
+      for (let k = 0; k <= n; k += 16) {                 // the grid a map is printed on
+        g.beginPath(); g.moveTo(k, 0); g.lineTo(k, n); g.moveTo(0, k); g.lineTo(n, k); g.stroke();
+      }
+      g.strokeStyle = "rgba(146,176,122,.22)"; g.lineWidth = 1.4;
+      for (let i = 0; i < 6; i++) {                      // contours, wrapping at the edges
+        const y = 12 + i * 20;
+        g.beginPath();
+        for (let x = 0; x <= n; x += 4) {
+          const yy = y + Math.sin((x / n) * TAU + i) * 5;
+          if (x) g.lineTo(x, yy); else g.moveTo(x, yy);
+        }
+        g.stroke();
+      }
+    } },
+
+    { id: "neon", name: "Neon", cost: 1500, floor: "#0b0718", paint(g, n) {
+      g.fillStyle = "#120c22"; g.fillRect(0, 0, n, n);
+      g.strokeStyle = "rgba(255,62,165,.20)"; g.lineWidth = 1;
+      for (let k = 0; k <= n; k += 16) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, n); g.stroke(); }
+      g.strokeStyle = "rgba(0,199,253,.16)";
+      for (let k = 0; k <= n; k += 16) { g.beginPath(); g.moveTo(0, k); g.lineTo(n, k); g.stroke(); }
+      sprinkle(g, "neon-lamp", 28, (c, x, y, a) => {
+        c.fillStyle = a > .5 ? "rgba(255,62,165,.55)" : "rgba(0,199,253,.5)";
+        c.beginPath(); c.arc(Math.round(x / 16) * 16, Math.round(y / 16) * 16, 1.8, 0, TAU); c.fill();
+      });
+    } },
+
+    { id: "streets", name: "Streets", cost: 2500, floor: "#15171f", paint(g, n) {
+      g.fillStyle = "#1a1e29"; g.fillRect(0, 0, n, n);
+      sprinkle(g, "streets-block", 52, (c, x, y, a, b) => {
+        c.fillStyle = a > .6 ? "#232838" : "#1f2332";
+        const w = 8 + b * 14, h = 8 + a * 14;
+        c.fillRect(Math.round(x / 4) * 4, Math.round(y / 4) * 4, w, h);
+      });
+      g.strokeStyle = "#2b3242"; g.lineWidth = 5;          // the roads between them
+      const road = (w) => {
+        g.lineWidth = w;
+        g.beginPath();
+        g.moveTo(0, n * 0.34); g.lineTo(n, n * 0.34);
+        g.moveTo(0, n * 0.78); g.lineTo(n, n * 0.78);
+        g.moveTo(n * 0.3, 0); g.lineTo(n * 0.3, n);
+        g.moveTo(n * 0.72, 0); g.lineTo(n * 0.72, n);
+        g.stroke();
+      };
+      road(5);
+      g.strokeStyle = "rgba(200,200,160,.14)";
+      g.setLineDash([4, 5]);
+      road(1);
+      g.setLineDash([]);
+    } }
+  ];
+  const groundById = id => GROUNDS.find(t => t.id === id) || GROUNDS[0];
+
+  /* Things standing about out there: a tree, a cow, a parked car. Placed the
+     same way the hoardings are - seeded from the world, worked out a stretch
+     at a time, cached, and drawn only while they are on screen - so the cost
+     is a dozen shapes a frame and nothing at all when the ground is plain.
+
+     They stand clear of the wall, and they are drawn before the channel is,
+     so one that strays never covers the part you are flying through. */
+  const PROP_EVERY = 520;
+  const propCache = new Map();
+
+  const PROPS = {
+    meadow: [
+      function tree(c, x, y, r) {
+        c.fillStyle = "#15300f";
+        c.fillRect(x - 1.6, y - 7, 3.2, 9);
+        for (let i = 0; i < 3; i++) {
+          c.fillStyle = i === 2 ? "#2f6a33" : "#20492451";
+          c.beginPath();
+          c.arc(x + (i - 1) * 5, y - 11 - i * 2.5, 7 - i * 1.1, 0, TAU);
+          c.fill();
+        }
+      },
+      function cow(c, x, y, r) {
+        c.fillStyle = "#d8d8cf";
+        c.beginPath(); c.ellipse(x, y - 5, 8, 4.6, 0, 0, TAU); c.fill();
+        c.fillStyle = "#2b2b2b";
+        c.beginPath(); c.ellipse(x - 3, y - 6, 2.6, 2, .5, 0, TAU); c.fill();
+        c.beginPath(); c.ellipse(x + 3.4, y - 4, 2, 1.6, 0, 0, TAU); c.fill();
+        c.fillRect(x - 6, y - 2, 1.6, 4); c.fillRect(x + 4.4, y - 2, 1.6, 4);
+        c.beginPath(); c.arc(x + 8, y - 7, 2.6, 0, TAU); c.fill();
+      }
+    ],
+    atlas: [
+      function village(c, x, y, r) {
+        c.fillStyle = "rgba(190,160,110,.5)";
+        for (let i = 0; i < 4; i++)
+          c.fillRect(x - 6 + (i % 2) * 7, y - 6 + Math.floor(i / 2) * 6, 5, 4.5);
+      },
+      function trig(c, x, y, r) {
+        c.strokeStyle = "rgba(146,176,122,.6)"; c.lineWidth = 1.4;
+        c.beginPath(); c.moveTo(x, y - 9); c.lineTo(x + 5, y); c.lineTo(x - 5, y);
+        c.closePath(); c.stroke();
+      }
+    ],
+    neon: [
+      function sign(c, x, y, r) {
+        const hot = r > .5;
+        c.fillStyle = hot ? "rgba(255,62,165,.85)" : "rgba(0,199,253,.8)";
+        c.shadowColor = c.fillStyle; c.shadowBlur = 12;
+        c.fillRect(x - 1.4, y - 20, 2.8, 20);
+        c.fillRect(x - 5, y - 20, 10, 2.6);
+        c.shadowBlur = 0;
+      },
+      function mast(c, x, y, r) {
+        c.strokeStyle = "rgba(120,140,190,.5)"; c.lineWidth = 1.2;
+        c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - 22);
+        c.moveTo(x - 4, y - 14); c.lineTo(x + 4, y - 14); c.stroke();
+        c.fillStyle = "rgba(255,62,165,.9)";
+        c.beginPath(); c.arc(x, y - 23, 1.6, 0, TAU); c.fill();
+      }
+    ],
+    streets: [
+      function car(c, x, y, r) {
+        const body = ["#8a3b3b", "#2f4d7a", "#5c5c64", "#7a6a35"][Math.floor(r * 4) % 4];
+        c.fillStyle = body;
+        c.beginPath(); c.roundRect(x - 4, y - 9, 8, 15, 2); c.fill();
+        c.fillStyle = "rgba(180,210,240,.5)";
+        c.fillRect(x - 2.8, y - 6.5, 5.6, 4);
+        c.fillRect(x - 2.8, y + 1, 5.6, 3);
+      },
+      function lamp(c, x, y, r) {
+        c.strokeStyle = "#3b4356"; c.lineWidth = 1.4;
+        c.beginPath(); c.moveTo(x, y); c.lineTo(x, y - 16); c.lineTo(x + 5, y - 16); c.stroke();
+        c.fillStyle = "rgba(255,226,150,.75)";
+        c.beginPath(); c.arc(x + 5.5, y - 15.5, 2, 0, TAU); c.fill();
+      }
+    ]
+  };
+
+  function propsFor(n, wd, kind) {
+    const key = wd.seed + ":" + kind + ":" + n;
+    let list = propCache.get(key);
+    if (list) return list;
+    const kinds = PROPS[kind];
+    const rnd = mulberry32(hashStr(key));
+    list = [];
+    if (kinds) {
+      const many = rnd() < .62 ? 1 : 2;
+      for (let i = 0; i < many; i++) {
+        const u = n * PROP_EVERY + rnd() * PROP_EVERY;
+        const side = rnd() < .5 ? -1 : 1;
+        list.push({ u, side, out: 26 + rnd() * 90, r: rnd(),
+                    draw: kinds[Math.floor(rnd() * kinds.length)] });
+      }
+    }
+    if (propCache.size > 90) propCache.clear();
+    propCache.set(key, list);
+    return list;
+  }
+
+  function propsNear(uMin, uMax, wd, kind) {
+    const out = [];
+    for (let n = Math.floor(uMin / PROP_EVERY) - 1; n <= Math.ceil(uMax / PROP_EVERY) + 1; n++) {
+      if (n < 0) continue;
+      for (const t of propsFor(n, wd, kind))
+        if (t.u > uMin - 120 && t.u < uMax + 120) out.push(t);
+    }
+    return out;
+  }
+
+  /* built the first time it is asked for, then kept */
+  const groundPats = new Map();
+  function groundPattern() {
+    const it = groundById(S.ground);
+    let pat = groundPats.get(it.id);
+    if (!pat) {
+      pat = ctx.createPattern(tile(it.paint), "repeat");
+      groundPats.set(it.id, pat);
+    }
+    return pat;
+  }
+  const byKind = kind => kind === "skins" ? skinById : kind === "tails" ? tailById : groundById;
   /* free items are everyone's; the rest are bought and remembered */
   const owns = (item, kind) => !!item && (item.cost === 0 || S.owned[kind].has(item.id));
   /* an armed item is worn on the pilot page only — never in a race, never to
@@ -2004,6 +2250,7 @@
     name: "",
     color: COLORS[0],
     skin: "arrow",
+    ground: "plain",     // yours alone: it is in no presence and reaches nobody
     tail: "wisp",
     coins: START_COINS,
     gems: 0,
@@ -2011,7 +2258,7 @@
     runGems: 0,
     gemsTaken: new Map(),
     gemPending: new Set(),
-    owned: { skins: new Set(), tails: new Set() },
+    owned: { skins: new Set(), tails: new Set(), grounds: new Set() },
     buying: null,
     canBuy: false,
     gatesPassed: 0,
@@ -2483,6 +2730,15 @@
   }
 
   /* ---------- field, from live presence ---------- */
+  /* Down to one pilot, with others who have already gone out: the race is
+     decided and only the distance is still in play. Read off the same field
+     the rail is drawn from, so it agrees with what you can see. */
+  function raceDecided() {
+    if (S.solo) return false;
+    const f = roundField();
+    return f.length >= 2 && f.filter(p => p.racing).length === 1;
+  }
+
   function roundField() {
     if (S.solo) {
       return [{ peer: S.me, isMe: true, name: S.name || "pilot", color: S.color, skin: S.skin,
@@ -2686,9 +2942,10 @@
   /* ---------- profile ---------- */
   function saveProfile() {
     const body = {
-      coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail,
+      coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail, ground: S.ground,
       name: S.name, color: S.color, best: S.best, bestSolo: S.bestSolo,
-      owned: { skins: [...S.owned.skins], tails: [...S.owned.tails] }
+      owned: { skins: [...S.owned.skins], tails: [...S.owned.tails],
+               grounds: [...S.owned.grounds] }
     };
     try { localStorage.setItem("cr.profile", JSON.stringify(body)); } catch (e) {}
     if (S.profileRef) S.profileRef.set(body).catch(() => {});
@@ -2725,6 +2982,9 @@
       for (const id of Array.isArray(p.owned.tails) ? p.owned.tails : []) {
         if (TAILS.some(t => t.id === id)) S.owned.tails.add(id);
       }
+      for (const id of Array.isArray(p.owned.grounds) ? p.owned.grounds : []) {
+        if (GROUNDS.some(t => t.id === id)) S.owned.grounds.add(id);
+      }
     }
     /* Dot was the free one until Arrow took its place. Anyone already wearing
        it keeps it, rather than finding it locked behind ninety coins. */
@@ -2733,6 +2993,8 @@
     if (owns(sk, "skins")) S.skin = sk.id;
     const tl = tailById(p.tail);
     if (owns(tl, "tails")) S.tail = tl.id;
+    const gr = groundById(p.ground);
+    if (owns(gr, "grounds")) S.ground = gr.id;
   }
   function refreshIdentity() {
     nameInput.value = S.name;
@@ -2877,8 +3139,30 @@
     const y0 = -offY / scale, y1 = (cv.height - offY) / scale;
     const uMin = dist + H - y1, uMax = dist + H - y0;
 
-    ctx.fillStyle = hatch || "#18233b";
-    ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
+    /* The ground travels with the world rather than sitting still under it.
+       A pattern is anchored to the canvas, so it has to be slid by however
+       far the channel has come - one tile's worth, wrapped - and the fill
+       widened by a tile at each end so the slide never exposes an edge.
+       Two state changes a frame; the fill itself is the one it always was. */
+    const slide = ((dist % TILE) + TILE) % TILE;
+    ctx.save();
+    ctx.translate(0, slide);
+    ctx.fillStyle = groundPattern() || hatch || "#18233b";
+    ctx.fillRect(x0, y0 - TILE, x1 - x0, y1 - y0 + TILE * 2);
+    ctx.restore();
+
+    // whatever is standing about on this particular ground
+    const scenery = PROPS[S.ground];
+    if (scenery) {
+      for (const t of propsNear(uMin, uMax, wd, S.ground)) {
+        const y = H - (t.u - dist);
+        const x = centerX(t.u, wd) + t.side * (halfW(t.u) + t.out);
+        if (x < x0 - 40 || x > x1 + 40) continue;
+        ctx.save();
+        t.draw(ctx, x, y, t.r);
+        ctx.restore();
+      }
+    }
 
     const step = 8;
     wallRoom(Math.ceil((y1 - y0) / step) + 4);
@@ -2894,7 +3178,7 @@
     for (let i = 1; i < wallN; i++) ctx.lineTo(wallLX[i], wallLY[i]);
     for (let i = wallN - 1; i >= 0; i--) ctx.lineTo(wallRX[i], wallLY[i]);
     ctx.closePath();
-    ctx.fillStyle = "#0c1324";
+    ctx.fillStyle = groundById(S.ground).floor;
     ctx.fill();
 
     ctx.font = '600 11px "Azeret Mono", monospace';
@@ -4375,10 +4659,17 @@
       : "last cursor standing";
 
     // betting panel: only for people not in the race, while one is live
-    const canBet = !S.joined && !S.solo && (S.phase === "open" || S.phase === "watching");
+    const decided = raceDecided();
+    const canBet = !S.joined && !S.solo && !decided &&
+      (S.phase === "open" || S.phase === "watching");
+    // a stake already laid still wants watching, even once it is decided
+    const showBetCard = canBet || (decided && !!S.bet);
     const betCard = $("betCard");
-    betCard.hidden = !canBet;
-    if (canBet) {
+    betCard.hidden = !showBetCard;
+    if (decided && !canBet) {
+      $("betState").textContent = S.bet ? "staked " + S.bet.amt + " · decided" : "decided";
+      $("stakes").dataset.h = ""; $("stakes").innerHTML = "";
+    } else if (canBet) {
       $("betState").textContent = S.bet ? "staked " + S.bet.amt
         : S.phase === "watching" ? "race running" : "pick one";
       const stakeHTML = STAKES.map(v =>
@@ -4516,7 +4807,7 @@
       const have = owns(s, kind);
       const armed = S.buying && S.buying.kind === kind && S.buying.id === s.id;
       // gold lock = you can afford this one today
-      const afford = !have && s.cost <= (kind === "skins" ? S.coins : S.gems);
+      const afford = !have && s.cost <= (kind === "tails" ? S.gems : S.coins);
       return '<button class="skin' + (have ? "" : " locked") + (afford ? " afford" : "") +
         (armed ? " armed" : "") + '" data-id="' + s.id + '"' +
         (have ? ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"'
@@ -4531,11 +4822,12 @@
   /* the hint line under each grid doubles as the till */
   function tillHTML(kind, purse, unit) {
     if (!S.buying || S.buying.kind !== kind) {
-      const mine = (kind === "skins" ? SKINS : TAILS).filter(s => owns(s, kind)).length;
-      const all = (kind === "skins" ? SKINS : TAILS).length;
+      const pool = kind === "skins" ? SKINS : kind === "tails" ? TAILS : GROUNDS;
+      const mine = pool.filter(s => owns(s, kind)).length;
+      const all = pool.length;
       return mine >= all ? "you own them all" : "tap a locked one to buy it";
     }
-    const item = (kind === "skins" ? skinById : tailById)(S.buying.id);
+    const item = byKind(kind)(S.buying.id);
     if (!S.canBuy) return "sign in with google to buy";
     if (purse < item.cost) return (item.cost - purse) + " more " + unit + " for " + item.name.toLowerCase();
     return '<button class="buy" data-buy="' + kind + '">Buy ' + esc(item.name) +
@@ -4544,13 +4836,21 @@
 
   function paintSkins() {
     const sig = S.coins + "/" + S.gems + "|" + S.skin + "|" + S.tail + "|" + S.color +
-      "|" + S.owned.skins.size + "." + S.owned.tails.size +
+      "|" + S.ground + "|" + S.owned.skins.size + "." + S.owned.tails.size +
+      "." + S.owned.grounds.size +
       "|" + (S.buying ? S.buying.kind + S.buying.id : "-");
-    if ($("skins").dataset.sig !== sig || $("tails").dataset.sig !== sig) previews.length = 0;
+    if ($("skins").dataset.sig !== sig || $("tails").dataset.sig !== sig ||
+        $("grounds").dataset.sig !== sig) {
+      previews.length = 0;                       // cleared, so every grid rebuilds
+      $("skins").dataset.sig = ""; $("tails").dataset.sig = ""; $("grounds").dataset.sig = "";
+    }
     grid($("skins"), SKINS, S.skin, sig, "skins");
     grid($("tails"), TAILS, S.tail, sig, "tails");
+    grid($("grounds"), GROUNDS, S.ground, sig, "grounds");
     $("coinTotal").textContent = S.coins + (S.coins === 1 ? " coin" : " coins");
     $("gemTotal").textContent = S.gems + (S.gems === 1 ? " gem" : " gems");
+    $("groundTotal").textContent = S.coins + (S.coins === 1 ? " coin" : " coins");
+    $("groundHint").innerHTML = tillHTML("grounds", S.coins, "coins");
     $("skinHint").innerHTML = tillHTML("skins", S.coins, "coins");
     $("tailHint").innerHTML = tillHTML("tails", S.gems, "gems");
   }
@@ -4558,13 +4858,15 @@
   function buy(kind) {
     if (!S.buying || S.buying.kind !== kind) return;
     if (!S.canBuy) { say("sign in with google to buy"); return; }
-    const item = (kind === "skins" ? skinById : tailById)(S.buying.id);
+    const item = byKind(kind)(S.buying.id);
     if (owns(item, kind)) return;
-    const purse = kind === "skins" ? S.coins : S.gems;
-    if (purse < item.cost) { say("not enough " + (kind === "skins" ? "coins" : "gems")); return; }
-    if (kind === "skins") S.skin = item.id; else S.tail = item.id;
+    const purse = kind === "tails" ? S.gems : S.coins;
+    if (purse < item.cost) { say("not enough " + (kind === "tails" ? "gems" : "coins")); return; }
+    if (kind === "skins") S.skin = item.id;
+    else if (kind === "tails") S.tail = item.id;
+    else S.ground = item.id;
     if (!S.serverLedger) {
-      if (kind === "skins") S.coins -= item.cost; else S.gems -= item.cost;
+      if (kind === "tails") S.gems -= item.cost; else S.coins -= item.cost;
     }
     S.owned[kind].add(item.id);
     S.buying = null;
@@ -4583,6 +4885,21 @@
       c.setTransform(4, 0, 0, 4, 0, 0);     // 136px of canvas over a 34 unit drawing
       c.clearRect(0, 0, 34, 34);
       c.save(); c.translate(17, 17);
+      if (p.item.paint) {                     // a ground: itself, with channel over it
+        c.restore();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        const pat = groundPats.get(p.item.id) ||
+          groundPats.set(p.item.id, c.createPattern(tile(p.item.paint), "repeat")).get(p.item.id);
+        c.fillStyle = pat; c.fillRect(0, 0, p.c.width, p.c.height);
+        c.fillStyle = p.item.floor;
+        c.beginPath();
+        c.moveTo(38, 0); c.bezierCurveTo(10, 45, 126, 91, 98, 136);
+        c.lineTo(38, 136); c.bezierCurveTo(66, 91, -50, 45, -22, 0);
+        c.closePath(); c.fill();
+        c.strokeStyle = "#00c7fd"; c.lineWidth = 3;
+        c.beginPath(); c.moveTo(38, 0); c.bezierCurveTo(10, 45, 126, 91, 98, 136); c.stroke();
+        continue;
+      }
       if (p.item.draw) {
         c.scale(.78, .78);
         p.item.draw(c, 0, p.item.id === "arrow" ? -8 : 0, S.color, now);
@@ -4612,7 +4929,7 @@
     el.addEventListener("click", e => {
       const b = e.target.closest(".skin");
       if (!b) return;
-      const item = (kind === "skins" ? skinById : tailById)(b.dataset.id);
+      const item = byKind(kind)(b.dataset.id);
       if (!owns(item, kind)) {                 // wear it here; the till does the rest
         S.buying = { kind, id: item.id };
         paintSkins();
@@ -4628,6 +4945,7 @@
   }
   pickFrom("skins", $("skins"));
   pickFrom("tails", $("tails"));
+  pickFrom("grounds", $("grounds"));
   $("skinHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("skins"); });
   $("tailHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("tails"); });
 
