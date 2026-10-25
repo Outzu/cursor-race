@@ -1774,7 +1774,7 @@
        asks for is on the terms screen; the licence is why this game takes no
        money. ART_CREDITS, above, is what the terms screen prints. */
     { id: "kamish", name: "Kamish's Wrath", cost: 2000, art: ART_KAMISH, draw(c, x, y, col, now) {
-      if (drawArt(c, ART_KAMISH, x, y, 30, now)) return;
+      if (drawArt(c, ART_KAMISH, x, y, 60, now)) return;
       c.save();                                   // until the picture is decoded
       c.shadowColor = "#ff4d4d"; c.shadowBlur = 14;
       c.fillStyle = withA(col, .9);
@@ -1787,9 +1787,64 @@
       c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill(); c.restore();
     } },
     { id: "mcsword", name: "Minecraft Sword", cost: 2800, art: ART_MCSWORD, draw(c, x, y, col, now) {
-      if (drawArt(c, ART_MCSWORD, x, y, 32, now)) return;
+      if (drawArt(c, ART_MCSWORD, x, y, 64, now)) return;
       c.save(); c.shadowColor = "#b6c2d4"; c.shadowBlur = 12; c.fillStyle = withA(col, .9);
       c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill(); c.restore();
+    } },
+    /* An arrowhead on fire. The plume behind it is three tongues of flame,
+       each a curve whose tip wanders frame to frame, hot white at the root
+       and the pilot's colour out at the edges. */
+    { id: "phoenix", name: "Phoenix", cost: 3200, draw(c, x, y, col, now) {
+      c.save(); c.translate(x, y);
+      const tongue = (ox, len, w, ph, fill) => {
+        const sway = Math.sin(now / 90 + ph) * 3.2, lick = len + Math.sin(now / 70 + ph * 1.7) * 3;
+        c.beginPath();
+        c.moveTo(ox - w, 2);
+        c.quadraticCurveTo(ox - w * 1.4 + sway * .4, lick * .45, ox + sway, lick);
+        c.quadraticCurveTo(ox + w * 1.4 + sway * .4, lick * .45, ox + w, 2);
+        c.closePath();
+        c.fillStyle = fill; c.fill();
+      };
+      c.shadowColor = "#ff8a1f"; c.shadowBlur = 16;
+      tongue(-5, 24, 4.5, 0, withA(col, .55));
+      tongue(5, 22, 4.5, 2.1, withA(col, .55));
+      tongue(0, 30, 5, 4.2, "#ff8a1f");
+      c.shadowBlur = 0;
+      tongue(0, 18, 3, 1.3, "#ffd166");
+      tongue(0, 10, 1.8, 3.6, "#fff6d6");
+      // the head: a slim arrow pointing up the channel
+      c.beginPath();
+      c.moveTo(0, -17); c.lineTo(8, 3); c.lineTo(0, -1); c.lineTo(-8, 3); c.closePath();
+      c.fillStyle = "#ffd166"; c.fill();
+      c.strokeStyle = "rgba(7,11,22,.7)"; c.lineWidth = 1.4; c.stroke();
+      c.beginPath(); c.moveTo(0, -11); c.lineTo(3.5, 0); c.lineTo(0, -2.5); c.lineTo(-3.5, 0); c.closePath();
+      c.fillStyle = "#fff6d6"; c.fill();
+      c.restore();
+    } },
+    /* A black disc over a blazing corona: the light is all round the edge,
+       with four flare spikes turning slowly behind it and a thin rim in the
+       pilot's colour so it still reads as theirs. */
+    { id: "eclipse", name: "Eclipse", cost: 3600, draw(c, x, y, col, now) {
+      c.save(); c.translate(x, y);
+      const breathe = 1 + .06 * Math.sin(now / 300);
+      const g = c.createRadialGradient(0, 0, 7, 0, 0, 20 * breathe);
+      g.addColorStop(0, "rgba(255,244,214,.95)");
+      g.addColorStop(.35, withA(col, .6));
+      g.addColorStop(1, withA(col, 0));
+      c.fillStyle = g; c.beginPath(); c.arc(0, 0, 20 * breathe, 0, TAU); c.fill();
+      c.save(); c.rotate(now / 1400);
+      c.strokeStyle = "rgba(255,244,214,.7)"; c.lineWidth = 1.2;
+      for (let i = 0; i < 4; i++) {
+        c.rotate(Math.PI / 2);
+        const l = 22 + 4 * Math.sin(now / 200 + i * 1.7);
+        c.beginPath(); c.moveTo(0, 9); c.lineTo(0, l); c.stroke();
+      }
+      c.restore();
+      c.fillStyle = "#070b16"; c.beginPath(); c.arc(0, 0, 8.5, 0, TAU); c.fill();
+      c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); c.arc(0, 0, 8.5, 0, TAU); c.stroke();
+      c.strokeStyle = "rgba(255,244,214,.9)"; c.lineWidth = 1.2;
+      c.beginPath(); c.arc(0, 0, 9.6, -2.4 + now / 900, -.6 + now / 900); c.stroke();   // the bright edge
+      c.restore();
     } }
   ];
   const skinById = id => SKINS.find(s => s.id === id) || SKINS[0];
@@ -1802,41 +1857,76 @@
     { id: "wisp", name: "Wisp", cost: 0, width: 3, plain: true,
       color: (f, col) => withA(col, .1 + .3 * f) },
     { id: "flare", name: "Flare", cost: 80, width: 9,
-      color: (f, col) => col,
-      spark: { rate: 26, life: 900, size: 2.2, spread: 34, color: col => col } },
+      color: (f, col) => (f > .82 ? "#ffffff" : col),         // white hot at the head
+      spark: { rate: 30, life: 800, size: 2.4, spread: 40, shape: "streak", color: col => col } },
     { id: "bubble", name: "Bubble", cost: 120, width: 5,
       color: (f, col) => withA(col, .08 + .3 * f),
       spark: { rate: 14, life: 2000, size: 4.5, spread: 18, grow: true, shape: "ring",
                drift: 60, sway: 7, color: col => withA(col, .8) } },
-    { id: "rainbow", name: "Rainbow", cost: 180, width: 10,
+    { id: "snowflake", name: "Snowflake", cost: 180, width: 6,
+      color: (f, col) => "rgba(214,238,255," + (0.08 + 0.3 * f).toFixed(2) + ")",
+      spark: { rate: 20, life: 2600, size: 4.2, spread: 12, shape: "flake",
+               drift: -55, sway: 11,
+               color: () => "rgba(230,246,255,.9)" } },
+    { id: "gold", name: "Gold", cost: 220, width: 10,
+      color: f => (f > .62 ? "#ffeeb0" : f > .3 ? "#ffc33d" : "#b8780f"),
+      spark: { rate: 30, life: 1700, size: 3.6, spread: 24, twinkle: true, shape: "diamond",
+               color: () => "#ffe9a3" } },
+    /* The rainbow as it first was: one ribbon running through the hues
+       along its length, shedding dots in whatever colour the moment has. */
+    { id: "rainbow2", name: "Rainbow 2", cost: 260, width: 10,
       color: (f, col, now) => "hsl(" + (((1 - f) * 300 + now / 7) % 360) + " 95% 60%)",
       spark: { rate: 32, life: 1200, size: 2.5, spread: 52,
                color: (col, now) => "hsl(" + ((now / 3) % 360) + " 95% 65%)" } },
-    { id: "snowflake", name: "Snowflake", cost: 220, width: 6,
-      color: (f, col) => "rgba(214,238,255," + (0.08 + 0.3 * f).toFixed(2) + ")",
-      spark: { rate: 20, life: 2600, size: 3.6, spread: 12, shape: "flake",
-               drift: -55, sway: 11,
-               color: () => "rgba(230,246,255,.9)" } },
-    { id: "gold", name: "Gold", cost: 350, width: 10,
-      color: f => (f > .62 ? "#ffeeb0" : f > .3 ? "#ffc33d" : "#b8780f"),
-      spark: { rate: 34, life: 1700, size: 2.3, spread: 24, twinkle: true,
-               color: () => "#ffe9a3" } },
-    { id: "fairydust", name: "Fairydust", cost: 450, width: 6,
+    { id: "ember", name: "Ember", cost: 300, width: 9,
+      color: f => (f > .75 ? "#ffd166" : f > .4 ? "#ff7a1a" : "#8a1c0c"),
+      spark: { rate: 40, life: 1400, size: 2.2, spread: 22, twinkle: true,
+               drift: -40, sway: 4,                               // embers rise and waver
+               color: () => "hsl(" + (8 + Math.random() * 38) + " 100% " + (52 + Math.random() * 14) + "%)" } },
+    { id: "fairydust", name: "Fairydust", cost: 350, width: 6,
       color: (f, col, now) => "hsla(" + ((now / 14 + f * 90) % 360) + " 90% 78% / " + (0.1 + 0.5 * f).toFixed(2) + ")",
-      spark: { rate: 44, life: 1500, size: 2.1, spread: 26, twinkle: true, shape: "star",
+      spark: { rate: 44, life: 1700, size: 2.4, spread: 26, twinkle: true, shape: "star",
                drift: -22, sway: 5,
                color: () => "hsl(" + (300 + Math.random() * 110) % 360 + " 95% 80%)" } },
-    { id: "sparks", name: "Sparks", cost: 600, width: 7,
+    { id: "petals", name: "Petals", cost: 400, width: 7,
+      color: (f, col) => "rgba(255,170,200," + (0.1 + 0.4 * f).toFixed(2) + ")",
+      spark: { rate: 18, life: 2800, size: 3.4, spread: 16, shape: "petal",
+               drift: -30, sway: 14,                              // falling, and tumbling as they go
+               color: () => (Math.random() < .5 ? "rgba(255,183,206,.9)" : "rgba(255,230,240,.9)") } },
+    { id: "sparks", name: "Sparks", cost: 450, width: 7,
       color: (f, col) => col,
-      spark: { rate: 58, life: 700, size: 2.8, spread: 135, fall: true, color: col => col } },
-    { id: "canvas", name: "Canvas", cost: 700, width: 16, plain: true,
+      spark: { rate: 64, life: 750, size: 3, spread: 150, fall: true, shape: "streak",
+               color: col => (Math.random() < .3 ? "#fff3c4" : col) } },   // some burn white
+    { id: "confetti", name: "Confetti", cost: 480, width: 6,
+      color: (f, col) => withA("#ffffff", .08 + .35 * f),
+      spark: { rate: 30, life: 2200, size: 2.6, spread: 40, shape: "confetti",
+               drift: -35, sway: 9,
+               color: () => "hsl(" + Math.floor(Math.random() * 360) + " 90% 62%)" } },
+    /* The ribbon itself is thrown about: every point is pushed off the line
+       by a jitter that changes frame to frame, so it crackles. */
+    { id: "volt", name: "Volt", cost: 520, width: 7, jag: 7,
+      color: f => (f > .7 ? "#ffffff" : "#7df9ff"),
+      spark: { rate: 40, life: 500, size: 2.4, spread: 120, shape: "streak",
+               color: () => (Math.random() < .4 ? "#ffffff" : "#7df9ff") } },
+    { id: "canvas", name: "Canvas", cost: 600, width: 16, plain: true,
       color: (f, col) => withA(col, .5),
       spark: { rate: 26, life: 2600, size: 7, spread: 9, grow: true,
                color: col => withA(col, .16) } },
-    { id: "smoke", name: "Smoke", cost: 900, width: 12,
+    { id: "galaxy", name: "Galaxy", cost: 650, width: 12,
+      color: f => "hsl(" + (255 + 35 * f) + " 80% " + (30 + 28 * f) + "%)",   // violet deepening to blue
+      spark: { rate: 40, life: 1900, size: 2.2, spread: 30, twinkle: true, shape: "star",
+               drift: 10, sway: 3,
+               color: () => ["#ffffff", "#9db4ff", "#d9a8ff", "#fff3b0"][Math.floor(Math.random() * 4)] } },
+    { id: "smoke", name: "Smoke", cost: 700, width: 12,
       color: (f, col) => withA(col, .2 + .35 * f),
-      spark: { rate: 18, life: 2400, size: 5, spread: 14, grow: true,
-               color: col => withA(col, .4) } }
+      spark: { rate: 16, life: 2400, size: 4.2, spread: 14, grow: true, shape: "puff",
+               drift: 30, sway: 6, color: col => withA(col, .35) } },
+    /* The one to save up for: six ribbons side by side, their hues rolling
+       along the length, with stars thrown off in every colour at once. */
+    { id: "rainbow", name: "Rainbow", cost: 900, width: 14, bands: 6,
+      color: (f, col, now) => "hsl(" + ((now / 7) % 360) + " 95% 60%)",
+      spark: { rate: 36, life: 1300, size: 2.8, spread: 56, twinkle: true, shape: "star",
+               color: (col, now) => "hsl(" + ((now / 3 + Math.random() * 60) % 360) + " 95% 65%)" } }
   ];
   const tailById = id => TAILS.find(t => t.id === id) || TAILS[0];
 
@@ -2134,8 +2224,62 @@
     return out;
   }
 
+  /* Several ribbons side by side rather than one that changes colour: the
+     same path pushed out along its normal, once per band, each band its own
+     hue. The offsets shrink with the taper so the bands meet at the tail. */
+  function bandTail(c, pts, width, bands, now) {
+    const n = pts.length;
+    const bw = width / bands;
+    const base = c.globalAlpha;
+    c.save();
+    c.lineCap = "round"; c.lineJoin = "round";
+    c.shadowColor = "#ffffff"; c.shadowBlur = 14;
+    c.strokeStyle = "rgba(255,255,255,.55)"; c.lineWidth = width * .45; c.globalAlpha = base * .35;
+    c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
+    for (let i = 1; i < n; i++) c.lineTo(pts[i][0], pts[i][1]);
+    c.stroke();
+    c.shadowBlur = 0;
+    // one normal per point, from the neighbours either side
+    const nx = new Array(n), ny = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+      const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+      nx[i] = -dy / len; ny[i] = dx / len;
+    }
+    const roll = now / 12;
+    for (let k = 0; k < bands; k++) {
+      const off = (k - (bands - 1) / 2) * bw;
+      c.strokeStyle = "hsl(" + ((k * 360 / bands + roll) % 360) + " 95% 60%)";
+      for (let i = 1; i < n; i++) {
+        const f0 = (i - 1) / (n - 1), f1 = i / (n - 1);
+        c.lineWidth = bw * (0.3 + 0.8 * f1);
+        c.globalAlpha = base * (0.15 + 0.85 * f1);
+        c.beginPath();
+        c.moveTo(pts[i - 1][0] + nx[i - 1] * off * f0, pts[i - 1][1] + ny[i - 1] * off * f0);
+        c.lineTo(pts[i][0] + nx[i] * off * f1, pts[i][1] + ny[i] * off * f1);
+        c.stroke();
+      }
+    }
+    c.restore();
+  }
+
+  /* The same path, every point shoved off it sideways by a different amount
+     each frame; the head stays put so it still reads as coming from the cursor. */
+  function jagged(pts, amount, now) {
+    const n = pts.length, out = new Array(n);
+    for (let i = 0; i < n; i++) {
+      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(n - 1, i + 1)];
+      const dx = b[0] - a[0], dy = b[1] - a[1], len = Math.hypot(dx, dy) || 1;
+      const k = (1 - i / (n - 1)) * amount * Math.sin(i * 7.3 + now / 23 + Math.sin(i * 3.1 + now / 41) * 2);
+      out[i] = [pts[i][0] - dy / len * k, pts[i][1] + dx / len * k];
+    }
+    return out;
+  }
+
   function drawTail(c, tail, pts, col, now) {
     if (!tail || !tail.color || !pts || pts.length < 2) return;
+    if (tail.bands) { bandTail(c, pts, tail.width, tail.bands, now); return; }
+    if (tail.jag) pts = jagged(pts, tail.jag, now);
     if (tail.plain) {
       c.save();
       c.lineJoin = "round"; c.lineCap = "round";
@@ -2162,17 +2306,67 @@
     }
     if (shape === "flake") {
       c.strokeStyle = p.col;
-      c.lineWidth = Math.max(0.8, r * 0.2);
+      c.lineWidth = Math.max(0.8, r * 0.18);
       c.save();
       c.translate(x, y);
       c.rotate(now / 1200 + p.born);
       c.beginPath();
-      for (let i = 0; i < 3; i++) {
-        const a = (i * Math.PI) / 3;
-        c.moveTo(-Math.cos(a) * r, -Math.sin(a) * r);
-        c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+      for (let i = 0; i < 6; i++) {               // six arms, each with a pair of branches
+        const a = (i * Math.PI) / 3, ca = Math.cos(a), sa = Math.sin(a);
+        c.moveTo(0, 0); c.lineTo(ca * r, sa * r);
+        const bx = ca * r * .6, by = sa * r * .6, bl = r * .32;
+        c.moveTo(bx, by); c.lineTo(bx + Math.cos(a + .9) * bl, by + Math.sin(a + .9) * bl);
+        c.moveTo(bx, by); c.lineTo(bx + Math.cos(a - .9) * bl, by + Math.sin(a - .9) * bl);
       }
       c.stroke();
+      c.restore();
+      return;
+    }
+    if (shape === "streak") {                      // a short line along the way it is going
+      c.strokeStyle = p.col;
+      c.lineWidth = Math.max(1, r * 0.55);
+      c.lineCap = "round";
+      const a = p.ang || 0, l = r * 2.6;
+      c.beginPath();
+      c.moveTo(x - Math.cos(a) * l, y - Math.sin(a) * l);
+      c.lineTo(x + Math.cos(a) * l * .3, y + Math.sin(a) * l * .3);
+      c.stroke();
+      return;
+    }
+    if (shape === "puff") {                        // three circles make a cloud
+      c.fillStyle = p.col;
+      c.beginPath();
+      c.arc(x, y, r, 0, TAU);
+      c.arc(x + r * .7, y - r * .25, r * .75, 0, TAU);
+      c.arc(x - r * .6, y + r * .2, r * .7, 0, TAU);
+      c.fill();
+      return;
+    }
+    if (shape === "petal") {                       // a leaning ellipse, turning as it falls
+      c.fillStyle = p.col;
+      c.beginPath();
+      c.ellipse(x, y, r, r * .55, now / 900 + p.born, 0, TAU);
+      c.fill();
+      return;
+    }
+    if (shape === "confetti") {                    // a scrap of paper, spinning
+      c.save();
+      c.translate(x, y);
+      c.rotate(now / 180 + p.born);
+      c.scale(1, .4 + .6 * Math.abs(Math.sin(now / 260 + p.born)));   // seen edge-on, then flat
+      c.fillStyle = p.col;
+      c.fillRect(-r * 1.3, -r * .7, r * 2.6, r * 1.4);
+      c.restore();
+      return;
+    }
+    if (shape === "diamond") {
+      c.save();
+      c.translate(x, y);
+      c.rotate(Math.PI / 4 + Math.sin(now / 300 + p.born) * .4);
+      c.fillStyle = p.col;
+      c.fillRect(-r, -r, r * 2, r * 2);
+      c.fillStyle = "rgba(255,255,255,.7)";
+      c.fillRect(-r * .4, -r * .4, r * .8, r * .8);
       c.restore();
       return;
     }
@@ -2233,7 +2427,8 @@
         size: sp.size * (0.7 + Math.random() * 0.6),
         col: sp.color(col, now),
         grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall,
-        shape: sp.shape || "dot", drift: sp.drift || 0, sway: sp.sway || 0
+        shape: sp.shape || "dot", drift: sp.drift || 0, sway: sp.sway || 0,
+        ang: -a                                   // up the channel is up the screen
       });
     }
     if (PARTS.length > 420) PARTS.splice(0, PARTS.length - 420);   // oldest first, in one go
@@ -3682,6 +3877,7 @@
   function frame(now) {
     step(now);
     draw(now);
+    animateAppCursor(now);
     if (document.body.classList.contains("focus")) clearFx();
     else drawFx(now);
     if (demoBg()) drawZoom(now); else clearZoom();
@@ -3996,7 +4192,7 @@
      when being jeered at stops being funny. Seconds hold the rate steady:
      quiet for the first quarter minute, then one every twenty five to forty
      five seconds. A minute's run hears two. */
-  const TAUNTS = 5;
+  const TAUNTS = 16;
   const TAUNT_CLEAR = 12;                   // a quiet run-in first, in seconds
   const TAUNT_MIN = 25, TAUNT_MAX = 45;
   function tauntsFor(wd) {
@@ -4036,6 +4232,17 @@
     taunt2: "media/98ae58e15beae489.mp3",
     taunt3: "media/95ff3745aaf02722.mp3",
     taunt4: "media/e550bbcd378d6c57.mp3",
+    taunt5: "media/af81bd64ac7d352f.mp3",
+    taunt6: "media/a2d6badfc1ad9003.mp3",
+    taunt7: "media/e02cc4ec50714f81.mp3",
+    taunt8: "media/cfe0d974131bf138.mp3",
+    taunt9: "media/5c2c50491794ce71.mp3",
+    taunt10: "media/b70b5a5d538e4e6a.mp3",
+    taunt11: "media/dd374bd4cfa8a8e9.mp3",
+    taunt12: "media/4c152f45cf7805e1.mp3",
+    taunt13: "media/dc3bd215d3e4bd18.mp3",
+    taunt14: "media/449f67a136339fe5.mp3",
+    taunt15: "media/da89d73dfdd92f2e.mp3",
   };
   const sfxEl = Object.create(null);
   function sfx(which) {
@@ -4154,7 +4361,7 @@
         born: now, life: sp.life, size: sp.size, col: sp.color(S.color, now),
         grow: !!sp.grow, twinkle: !!sp.twinkle, fall: !!sp.fall,
         // on screen, up is negative y — the world's "drift up" flips sign here
-        shape: sp.shape || "dot", drift: -(sp.drift || 0), sway: sp.sway || 0
+        shape: sp.shape || "dot", drift: -(sp.drift || 0), sway: sp.sway || 0, ang: a
       });
       if (fxParts.length > 160) fxParts.shift();
     }
@@ -5014,20 +5221,39 @@
   $("tailHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("tails"); });
   $("groundHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("grounds"); });
 
-  /* the chosen head doubles as the page's own mouse cursor */
+  /* The chosen head doubles as the page's own mouse cursor. A CSS cursor is
+     one picture, so the head is drawn into a canvas and handed over as a PNG;
+     the box is big enough for the largest of them. */
+  const CURSOR_BOX = 80;
   let cursorUrl = "";
-  function updateAppCursor() {
+  const cursorCanvas = document.createElement("canvas");
+  cursorCanvas.width = cursorCanvas.height = CURSOR_BOX;
+  function updateAppCursor(now) {
     const head = effSkin();
-    const c = document.createElement("canvas");
-    c.width = c.height = 40;
-    const g = c.getContext("2d");
-    g.translate(20, 20);
-    try { head.draw(g, 0, 0, S.color, 0); } catch (e) { return; }
+    const g = cursorCanvas.getContext("2d");
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, CURSOR_BOX, CURSOR_BOX);
+    g.translate(CURSOR_BOX / 2, CURSOR_BOX / 2);
+    try { head.draw(g, 0, 0, S.color, now || 0); } catch (e) { return; }
     let url;
-    try { url = c.toDataURL("image/png"); } catch (e) { return; }
+    try { url = cursorCanvas.toDataURL("image/png"); } catch (e) { return; }
     if (url === cursorUrl) return;
     cursorUrl = url;
-    document.documentElement.style.cursor = "url(" + url + ") 20 20, auto";
+    document.documentElement.style.cursor = "url(" + url + ") " + (CURSOR_BOX / 2) + " " + (CURSOR_BOX / 2) + ", auto";
+  }
+  /* A head that moves is kept moving by handing the browser a fresh picture
+     a dozen times a second - only while the page cursor is on show, which it
+     is not during a race, and only for heads that actually change: a drawn
+     one that takes the clock, or a picture with more than one frame. */
+  let cursorTick = 0;
+  function animateAppCursor(now) {
+    if (now - cursorTick < 80 || document.hidden) return;
+    cursorTick = now;
+    if (document.body.classList.contains("focus")) return;
+    const head = effSkin();
+    if (head.draw.length < 5) return;
+    if (head.art && art(head.art).frames.length < 2) return;
+    updateAppCursor(now);
   }
 
   window.addEventListener("keydown", e => {

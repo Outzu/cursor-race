@@ -15,7 +15,7 @@ const page = fs.readFileSync(path.join(__dirname, "..", "game", "cursor-race.htm
 // every item on the page, in the order it is declared: skins, then tails, then grounds
 function listed() {
   const out = [];
-  const re = /id: "([a-z]+)", name: "[^"]+", cost: (\d+)/g;
+  const re = /id: "([a-z0-9]+)", name: "[^"]+", cost: (\d+)/g;
   let m;
   while ((m = re.exec(page))) out.push({ id: m[1], cost: Number(m[2]) });
   return out;

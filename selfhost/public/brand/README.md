@@ -10,7 +10,7 @@ Exports the game embeds, kept here with their sources so they can be re-cut.
 - `trophy-source.png` / `trophy.webp` - the button that opens the board on a phone
 - `sfx/prepare.mp3` - the countdown cue, mono 64k; multiplayer only, since a
   single-player run has no gate to count down
-- `sfx/taunt0..4.mp3` - the jeering mid-race, mono 64k. Where they land comes
+- `sfx/taunt0..15.mp3` - the jeering mid-race, mono 64k. Where they land comes
   from the world seed, so everyone in a race hears the same one at the same
   point rather than each pilot being distracted at a different moment
 

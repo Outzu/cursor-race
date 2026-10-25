@@ -28,12 +28,11 @@ function maxDistAt(startedAt, now) {
 const SKIN_COST = {
   arrow: 0, ring: 40, dot: 90, cross: 160, blade: 260, glow: 400,
   comet: 560, prism: 760, halo: 1000, spectrum: 1300, bullion: 1700,
-  kamish: 2000, azure: 2400, mcsword: 2800
-};
-const TAIL_COST = {
-  none: 0, wisp: 0, flare: 80, bubble: 120, rainbow: 180, snowflake: 220,
-  gold: 350, fairydust: 450, sparks: 600, canvas: 700, smoke: 900
-};
+  kamish: 2000, azure: 2400, mcsword: 2800,
+  phoenix: 3200, eclipse: 3600 };
+const TAIL_COST = { none: 0, wisp: 0, flare: 80, bubble: 120, snowflake: 180, gold: 220,
+  rainbow2: 260, ember: 300, fairydust: 350, petals: 400, sparks: 450, confetti: 480, volt: 520,
+  canvas: 600, galaxy: 650, smoke: 700, rainbow: 900 };
 const GROUND_COST = {
   plain: 0, meadow: 300, atlas: 800, neon: 1500, streets: 2500
 };
