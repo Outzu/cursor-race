@@ -636,14 +636,19 @@
     letter-spacing: .02em; text-transform: none; text-indent: 0; text-align: center;
     display: block; margin: 0 auto 12px;
   }
-  .lobpick { display: flex; gap: 8px; justify-content: center; }
+  .lobpick { display: flex; gap: 10px; justify-content: center; margin-top: 10px; }
   .lobpick .pick {
-    font-family: var(--display); font-size: 14px; letter-spacing: .1em;
-    text-transform: uppercase; padding: 7px 16px; color: var(--faint);
+    font-family: var(--display); font-size: 22px; font-weight: 700;
+    letter-spacing: .04em; text-transform: uppercase; padding: 11px 22px;
+    color: var(--faint);
     background: transparent; box-shadow: inset 0 0 0 1px var(--wall-line);
   }
   .lobpick .pick.on { color: var(--void); background: var(--amber); box-shadow: none; }
-  .lobnote { font-size: 13px; color: var(--faint); margin: 9px 0 2px; }
+  /* the verdict class carries the look; this only places it */
+  .lobnote { margin: 0 0 12px; }
+  /* the note used to sit between these two rows; it leads now, so the gap
+     it was leaving behind has to be put back deliberately */
+  .makelob .btnrow { margin-top: 12px; }
   /* the code, where you are sitting in a lobby that has one */
   .codeline {
     display: flex; align-items: center; justify-content: center; gap: 10px;
@@ -1190,7 +1195,12 @@
   const RESULT_HOLD = 9000;
 
   const COLORS = ["#00c7fd", "#feb703", "#ff5470", "#9b8cff", "#6ee36a", "#ff8ad4", "#58b4ff", "#ffe66b"];
-  const TAU = 6.283185;
+  /* A full turn, to the precision the platform has. It used to be written out
+     to six places, which leaves every circle a third of a millionth of a turn
+     short of closed. A stroke hides that; a fill has to close the gap itself,
+     and that is exactly the kind of near-degenerate path two browsers can
+     disagree about. */
+  const TAU = Math.PI * 2;
 
   const distAt = t => {
     if (t <= 0) return 0;
@@ -1631,16 +1641,7 @@
   }
 
   const SKINS = [
-    { id: "dot", name: "Dot", cost: 0, draw(c, x, y, col) {
-      c.fillStyle = col; c.beginPath(); c.arc(x, y, 6.5, 0, TAU); c.fill();
-      c.strokeStyle = withA(col, .45); c.lineWidth = 2;
-      c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
-    } },
-    { id: "ring", name: "Ring", cost: 40, draw(c, x, y, col) {
-      c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
-      c.fillStyle = col; c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
-    } },
-    { id: "arrow", name: "Arrow", cost: 90, draw(c, x, y, col) {
+    { id: "arrow", name: "Arrow", cost: 0, draw(c, x, y, col) {
       c.save(); c.translate(x, y);
       c.beginPath();
       c.moveTo(0, 0); c.lineTo(0, 17); c.lineTo(4.6, 12.8); c.lineTo(7.8, 19.6);
@@ -1648,6 +1649,15 @@
       c.fillStyle = col; c.fill();
       c.strokeStyle = "rgba(7,11,22,.7)"; c.lineWidth = 1.4; c.stroke();
       c.restore();
+    } },
+    { id: "ring", name: "Ring", cost: 40, draw(c, x, y, col) {
+      c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
+    } },
+    { id: "dot", name: "Dot", cost: 90, draw(c, x, y, col) {
+      c.fillStyle = col; c.beginPath(); c.arc(x, y, 6.5, 0, TAU); c.fill();
+      c.strokeStyle = withA(col, .45); c.lineWidth = 2;
+      c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
     } },
     { id: "cross", name: "Cross", cost: 160, draw(c, x, y, col) {
       c.strokeStyle = col; c.lineWidth = 2; c.beginPath();
@@ -1770,39 +1780,39 @@
     { id: "none", name: "None", cost: 0 },
     { id: "wisp", name: "Wisp", cost: 0, width: 3, plain: true,
       color: (f, col) => withA(col, .1 + .3 * f) },
-    { id: "flare", name: "Flare", cost: 8, width: 9,
+    { id: "flare", name: "Flare", cost: 80, width: 9,
       color: (f, col) => col,
       spark: { rate: 26, life: 900, size: 2.2, spread: 34, color: col => col } },
-    { id: "bubble", name: "Bubble", cost: 12, width: 5,
+    { id: "bubble", name: "Bubble", cost: 120, width: 5,
       color: (f, col) => withA(col, .08 + .3 * f),
       spark: { rate: 14, life: 2000, size: 4.5, spread: 18, grow: true, shape: "ring",
                drift: 60, sway: 7, color: col => withA(col, .8) } },
-    { id: "rainbow", name: "Rainbow", cost: 18, width: 10,
+    { id: "rainbow", name: "Rainbow", cost: 180, width: 10,
       color: (f, col, now) => "hsl(" + (((1 - f) * 300 + now / 7) % 360) + " 95% 60%)",
       spark: { rate: 32, life: 1200, size: 2.5, spread: 52,
                color: (col, now) => "hsl(" + ((now / 3) % 360) + " 95% 65%)" } },
-    { id: "snowflake", name: "Snowflake", cost: 22, width: 6,
+    { id: "snowflake", name: "Snowflake", cost: 220, width: 6,
       color: (f, col) => "rgba(214,238,255," + (0.08 + 0.3 * f).toFixed(2) + ")",
       spark: { rate: 20, life: 2600, size: 3.6, spread: 12, shape: "flake",
                drift: -55, sway: 11,
                color: () => "rgba(230,246,255,.9)" } },
-    { id: "gold", name: "Gold", cost: 35, width: 10,
+    { id: "gold", name: "Gold", cost: 350, width: 10,
       color: f => (f > .62 ? "#ffeeb0" : f > .3 ? "#ffc33d" : "#b8780f"),
       spark: { rate: 34, life: 1700, size: 2.3, spread: 24, twinkle: true,
                color: () => "#ffe9a3" } },
-    { id: "fairydust", name: "Fairydust", cost: 45, width: 6,
+    { id: "fairydust", name: "Fairydust", cost: 450, width: 6,
       color: (f, col, now) => "hsla(" + ((now / 14 + f * 90) % 360) + " 90% 78% / " + (0.1 + 0.5 * f).toFixed(2) + ")",
       spark: { rate: 44, life: 1500, size: 2.1, spread: 26, twinkle: true, shape: "star",
                drift: -22, sway: 5,
                color: () => "hsl(" + (300 + Math.random() * 110) % 360 + " 95% 80%)" } },
-    { id: "sparks", name: "Sparks", cost: 60, width: 7,
+    { id: "sparks", name: "Sparks", cost: 600, width: 7,
       color: (f, col) => col,
       spark: { rate: 58, life: 700, size: 2.8, spread: 135, fall: true, color: col => col } },
-    { id: "canvas", name: "Canvas", cost: 70, width: 16, plain: true,
+    { id: "canvas", name: "Canvas", cost: 700, width: 16, plain: true,
       color: (f, col) => withA(col, .5),
       spark: { rate: 26, life: 2600, size: 7, spread: 9, grow: true,
                color: col => withA(col, .16) } },
-    { id: "smoke", name: "Smoke", cost: 90, width: 12,
+    { id: "smoke", name: "Smoke", cost: 900, width: 12,
       color: (f, col) => withA(col, .2 + .35 * f),
       spark: { rate: 18, life: 2400, size: 5, spread: 14, grow: true,
                color: col => withA(col, .4) } }
@@ -1978,7 +1988,7 @@
     cancelled: false,
     name: "",
     color: COLORS[0],
-    skin: "dot",
+    skin: "arrow",
     tail: "wisp",
     coins: START_COINS,
     gems: 0,
@@ -1992,6 +2002,9 @@
     gatesPassed: 0,
     wins: 0,
     peers: [],          // everyone at my table
+    taunts: null,       // where the jeering lands on this channel
+    tauntSeed: "",      // the channel those were worked out for
+    tauntNext: 0,
     lobbyPeers: [],     // everyone on the site, where the host sends a roster
     lobbySum: null,     // or just the counts, where it sends a digest instead
     myPeer: "",         // our own peer id, which the digest is read against
@@ -2698,6 +2711,9 @@
         if (TAILS.some(t => t.id === id)) S.owned.tails.add(id);
       }
     }
+    /* Dot was the free one until Arrow took its place. Anyone already wearing
+       it keeps it, rather than finding it locked behind ninety coins. */
+    if (p.skin === "dot") S.owned.skins.add("dot");
     const sk = skinById(p.skin);
     if (owns(sk, "skins")) S.skin = sk.id;
     const tl = tailById(p.tail);
@@ -3215,6 +3231,17 @@
     if (S.phase === "racing" || S.phase === "watching") {
       const t = (now - S.startAt) / 1000;
       S.dist = distAt(t);
+      if (S.phase === "racing" && S.world) {
+        if (S.tauntSeed !== S.world.seed) {      // a new channel, a new schedule
+          S.tauntSeed = S.world.seed;
+          S.taunts = tauntsFor(S.world);
+          S.tauntNext = 0;
+          warmTaunts();
+        }
+        while (S.tauntNext < S.taunts.length && t >= S.taunts[S.tauntNext].t) {
+          sfx(S.taunts[S.tauntNext++].which);
+        }
+      }
       $("speedTag").textContent = "flow / " + String(Math.round(speedAt(t))).padStart(3, "0") + " u/s";
       if (S.phase === "racing") {
         const why = hitTest(S.cx, S.cy, S.dist, S.world);
@@ -3589,6 +3616,41 @@
      sit at whatever the slider says. Ducking it instead left a bed of music
      under everything; silence is cleaner. */
   const CUE_LEVEL = 1;
+
+  /* Somebody jeering at you from the dark beside the channel.
+
+     Where they jeer is worked out from the world's own seed, like everything
+     else here, so every pilot in a race hears the same thing at the same
+     point. A distraction only one of them could hear would be a distraction
+     only one of them has to beat, and there is money on these races.
+
+     Sparing on purpose, and counted in seconds rather than metres. The
+     channel accelerates from 150 to 760 units a second, so a fixed distance
+     between them would start out a comfortable half minute apart and collapse
+     to five seconds by the time anyone is going quickly - which is precisely
+     when being jeered at stops being funny. Seconds hold the rate steady:
+     quiet for the first quarter minute, then one every twenty five to forty
+     five seconds. A minute's run hears two. */
+  const TAUNTS = 5;
+  const TAUNT_CLEAR = 12;                   // a quiet run-in first, in seconds
+  const TAUNT_MIN = 25, TAUNT_MAX = 45;
+  function tauntsFor(wd) {
+    const rnd = mulberry32(hashStr(wd.seed + ":jeer"));
+    const list = [];
+    let t = TAUNT_CLEAR + rnd() * 6;
+    while (t < 600) {
+      list.push({ t, which: "taunt" + Math.floor(rnd() * TAUNTS) });
+      t += TAUNT_MIN + rnd() * (TAUNT_MAX - TAUNT_MIN);
+    }
+    return list;
+  }
+  /* built before the first one is due, so it does not arrive late */
+  function warmTaunts() {
+    for (let i = 0; i < TAUNTS; i++) {
+      const k = "taunt" + i;
+      if (!sfxEl[k]) { sfxEl[k] = new Audio(SFX[k]); sfxEl[k].preload = "auto"; }
+    }
+  }
   const inPlay = () => S.phase === "open" || S.phase === "racing" || S.phase === "watching";
 
   function setVolume(v) {
@@ -3597,17 +3659,25 @@
     try { localStorage.setItem("cr.vol", String(Math.round(musicVol * 100))); } catch (e) {}
   }
   /* Two cues: one as the gate opens, one when the lights go out. Short enough
-     to embed, so they work as an artifact too, unlike the lobby music. They
-     follow the same mute as the music - someone who silenced the tab wants it
-     silent - and the countdown cue is cut off by the start, so a long gate
-     never leaves the two of them overlapping. */
+     to embed, so they work as an artifact too, unlike the lobby music. They do
+     not follow the music's mute - that button is the tune's, not the game's -
+     but they do follow its slider. The countdown cue is cut off by the start,
+     so a long gate never leaves the two of them overlapping. */
   const SFX = {
     prepare: "media/8ccec7ed52a381fd.mp3",
-    go: "media/832245c74c6a301d.mp3"
+    go: "media/832245c74c6a301d.mp3",
+    taunt0: "media/c2859ee5661217cd.mp3",
+    taunt1: "media/7f54e42cb6541d85.mp3",
+    taunt2: "media/98ae58e15beae489.mp3",
+    taunt3: "media/95ff3745aaf02722.mp3",
+    taunt4: "media/e550bbcd378d6c57.mp3",
   };
   const sfxEl = Object.create(null);
   function sfx(which) {
-    if (!musicOn) return;
+    /* The button in the corner is the lobby music's, and only the music's.
+       Silencing the tune you are humming along to is not the same as asking
+       to race deaf - the start, and the jeering, are part of the game rather
+       than a soundtrack over it. The slider is still the volume for both. */
     let a = sfxEl[which];
     if (!a) { a = sfxEl[which] = new Audio(SFX[which]); a.preload = "auto"; }
     /* The slider is the master for everything that makes a sound. These used
@@ -3819,6 +3889,7 @@
   function paintVeil() {
     if (S.phase === "racing" || S.phase === "watching") { veil.hidden = true; return; }
     veil.hidden = false;
+    veil.dataset.screen = "";          // each branch below says what it drew
     veil.classList.toggle("thin", S.phase === "open" && withinWarmup());
 
     if (S.phase === "open") {
@@ -3920,7 +3991,11 @@
       return;
     }
 
-    if (!S.table && S.db) { picking ? paintTables() : paintHome(); return; }
+    if (!S.table && S.db) {
+      if (picking) paintTables(); else paintHome();
+      veil.dataset.screen = "lobby";
+      return;
+    }
 
     // idle, at a table
     veil.innerHTML = wrapHTML(
@@ -4018,15 +4093,16 @@
   function makeLobbyHTML() {
     if (making) {
       return '<div class="makelob">' +
+        // what this choice means, before the fields rather than after them
+        '<p class="lobnote verdict">' + (makePriv
+          ? "Not listed. It gets a five character code, and a link that carries it."
+          : "Listed here for everyone while somebody is sitting in it.") + '</p>' +
         '<input id="lobname" type="text" maxlength="24" placeholder="Name your lobby" ' +
           'value="' + esc(S.lastLobbyName || "") + '">' +
         '<div class="lobpick">' +
           '<button class="pick' + (makePriv ? "" : " on") + '" data-act="mkpub">Public</button>' +
           '<button class="pick' + (makePriv ? " on" : "") + '" data-act="mkpriv">Private</button>' +
         '</div>' +
-        '<p class="lobnote">' + (makePriv
-          ? "Not listed. It gets a five character code, and a link that carries it."
-          : "Listed here for everyone while somebody is sitting in it.") + '</p>' +
         '<div class="btnrow">' +
           '<button class="go" data-act="mkgo">Create</button>' +
           '<button class="go ghost" data-act="mkoff">Cancel</button>' +
@@ -4060,7 +4136,7 @@
     veil.innerHTML = wrapHTML(
       '<h1 class="brand"><img src="' + LOGO + '" alt="Cursor Clash" decoding="async"></h1>' +
       '<p>Pick a lobby. Each one runs its own race on its own channel, up to ' +
-        TABLE_CAP + ' pilots. Opening a race there starts a ' + S.gateSecs + ' second gate.</p>' +
+        TABLE_CAP + ' pilots.</p>' +
       '<div class="tables">' + cards + '</div>' +
       openLobbiesHTML(counts) +
       makeLobbyHTML() +
@@ -4072,6 +4148,44 @@
       '</div>' +
       '<div id="accountSlot"></div>' +
       noteLine());
+  }
+
+  /* A count going from two to three used to rebuild the whole veil. Every
+     node on the screen was thrown away and made again - the mark among them,
+     which has to be decoded afresh each time - and that is the flicker. The
+     numbers are the only thing that changed, so now only the numbers change.
+     A lobby appearing or disappearing is a different matter and still redraws.
+
+     Returns false if the screen it expects is not the one that is up. */
+  function tickLobbyNumbers() {
+    if (veil.dataset.screen !== "lobby") return false;
+
+    const here = peopleHere();
+    const verdict = veil.querySelector(".verdict");
+    if (verdict) {
+      const want = here + (here === 1 ? " pilot" : " pilots") + " on the site";
+      if (verdict.textContent !== want) verdict.textContent = want;
+    }
+
+    const counts = tableCounts();
+    for (const card of veil.querySelectorAll(".tcard[data-table]")) {
+      const c = counts[card.dataset.table] || { n: 0, busy: false };
+      const num = card.querySelector(".tnum");
+      if (num) {
+        const want = c.n + "<em>/" + TABLE_CAP + "</em>";
+        if (num.innerHTML !== want) num.innerHTML = want;
+      }
+      const state = c.busy ? "racing" : c.n ? "waiting" : "empty";
+      const tag = card.querySelector(".tstate");
+      if (tag && tag.textContent !== state) {
+        tag.textContent = state;
+        tag.className = "tstate " + state;
+      }
+      const full = c.n >= TABLE_CAP;
+      card.classList.toggle("full", full);
+      card.disabled = full;
+    }
+    return true;
   }
 
   // keeps the open-window clock ticking without rebuilding the whole veil
@@ -4536,11 +4650,13 @@
     setNet(room.connected(), room.connected() ? "channel live" : "connecting");
     room.onConnection(c => setNet(c, c ? "channel live" : "reconnecting"),
       () => setNet(false, "solo channel"));
-    /* The roster lands up to 25 times a second on a busy site, and rebuilding
-       the veil throws away whatever is half-typed in the lobby name or code
-       box. So the list is only redrawn when what it would show has actually
-       changed - which also keeps the cost of a longer list off the hot path. */
-    let lastShape = "", wasCarrier = false;
+    /* The roster lands up to 25 times a second on a busy site. Two things
+       follow from that: the veil is rebuilt only when the set of lobbies on
+       it changes - a new one made, an empty one gone, a name learned - and a
+       count that merely ticked is written straight into the card it belongs
+       to. Rebuilding for a count threw away whatever was half-typed in the
+       name or code box, and flickered. */
+    let lastList = "", lastNums = "", wasCarrier = false;
     room.onPeers(ch => {
       if (ch.sum) { S.lobbySum = ch.sum; S.myPeer = ch.me || S.myPeer; S.lobbyPeers = []; }
       else { S.lobbyPeers = ch.peers.slice(); S.lobbySum = null; }
@@ -4553,10 +4669,21 @@
       } else wasCarrier = false;
       if (!S.table) {
         const counts = tableCounts();
-        const shape = Object.keys(counts).sort().map(id =>
-          id + ":" + counts[id].n + (counts[id].busy ? "!" : "") +
-          ((made.get(id) || {}).name || "")).join("|") + "/" + peopleHere();
-        if (shape !== lastShape) { lastShape = shape; paintVeil(); }
+        const ids = Object.keys(counts).sort();
+        // which lobbies there are and what they are called ...
+        const list = ids.map(id => id + ":" + ((made.get(id) || {}).name || "")).join("|");
+        // ... as against how many are sitting in them
+        const nums = ids.map(id => counts[id].n + (counts[id].busy ? "!" : "")).join(",") +
+          "/" + peopleHere();
+        if (list !== lastList) {
+          lastList = list; lastNums = nums;
+          paintVeil();                              // the list itself is different
+        } else if (nums !== lastNums) {
+          lastNums = nums;
+          // written into the cards where they stand, unless some other screen
+          // is up - the result card, say - in which case redraw it properly
+          if (!tickLobbyNumbers()) paintVeil();
+        }
       }
       paintRail();
     }, () => { S.lobbyPeers = []; S.lobbySum = null; setNet(false, "solo channel"); });
