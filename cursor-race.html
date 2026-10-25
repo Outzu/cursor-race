@@ -1975,7 +1975,9 @@
     gatesPassed: 0,
     wins: 0,
     peers: [],          // everyone at my table
-    lobbyPeers: [],     // everyone on the site, for the lobby list
+    lobbyPeers: [],     // everyone on the site, where the host sends a roster
+    lobbySum: null,     // or just the counts, where it sends a digest instead
+    myPeer: "",         // our own peer id, which the digest is read against
     lobbyMeta: null,    // a made lobby's name and privacy, while we are in it
     lastLobbyName: "",  // kept across a repaint of the create form
     table: null,
@@ -2152,11 +2154,25 @@
   /* ---------- tables ---------- */
   /* everyone on the site, counted as people rather than open tabs */
   function peopleHere() {
+    if (S.lobbySum) return S.lobbySum.people;
     const ids = new Set();
     for (const p of S.lobbyPeers) ids.add(p.by || p.peer);
     return ids.size;
   }
+  /* Two ways in, because the game runs in two places. Self-hosted, the server
+     sends a digest of the lobbies and these read straight off it. As an
+     artifact there is no such thing, so they work it out from the roster the
+     platform does send, exactly as before. */
   function tableCounts() {
+    if (S.lobbySum) {
+      const out = {};
+      for (const t of LOBBIES) out[t] = { n: 0, busy: false };
+      for (const id of Object.keys(S.lobbySum.lobbies)) {
+        const row = S.lobbySum.lobbies[id];
+        out[id] = { n: row.n, busy: !!row.busy };
+      }
+      return out;
+    }
     const seats = {};
     const seat = id => seats[id] || (seats[id] = { ids: new Set(), busy: false });
     for (const t of LOBBIES) seat(t);
@@ -2176,6 +2192,19 @@
      name nobody is carrying yet stays private, so an unknown code is never
      advertised to the whole site by accident. */
   function scanMade() {
+    if (S.lobbySum) {
+      made.clear();
+      for (const id of Object.keys(S.lobbySum.lobbies)) {
+        if (isHouse(id)) continue;
+        const row = S.lobbySum.lobbies[id];
+        made.set(id, { name: row.name || "", priv: row.name ? !!row.priv : true });
+      }
+      if (S.table && !isHouse(S.table)) {
+        const mine = made.get(S.table);
+        if (mine && mine.name) S.lobbyMeta = { name: mine.name, priv: mine.priv };
+      }
+      return made;
+    }
     const seen = new Map();
     for (const p of S.lobbyPeers) {
       const pr = p.presence || {};
@@ -2200,6 +2229,10 @@
      and arrives at the same answer, so nobody has to agree on anything, and
      when that peer leaves the next one picks the name up. */
   function carriesName() {
+    if (S.lobbySum) {
+      const row = S.lobbySum.lobbies[S.table];
+      return !!(row && S.myPeer && row.first === S.myPeer);
+    }
     let mine = null, first = null;
     for (const p of S.lobbyPeers) {
       const pr = p.presence || {};
@@ -4492,7 +4525,8 @@
        changed - which also keeps the cost of a longer list off the hot path. */
     let lastShape = "", wasCarrier = false;
     room.onPeers(ch => {
-      S.lobbyPeers = ch.peers.slice();
+      if (ch.sum) { S.lobbySum = ch.sum; S.myPeer = ch.me || S.myPeer; S.lobbyPeers = []; }
+      else { S.lobbyPeers = ch.peers.slice(); S.lobbySum = null; }
       scanMade();
       /* the peer carrying this lobby's name may have just closed their tab,
          in which case the next one along is now us and has to start saying so */
@@ -4508,7 +4542,7 @@
         if (shape !== lastShape) { lastShape = shape; paintVeil(); }
       }
       paintRail();
-    }, () => { S.lobbyPeers = []; setNet(false, "solo channel"); });
+    }, () => { S.lobbyPeers = []; S.lobbySum = null; setNet(false, "solo channel"); });
 
     /* the room echoes our own messages back, so a timestamped one measures the
        round trip without needing any ping support from the platform */

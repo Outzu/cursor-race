@@ -5,9 +5,50 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 
 const SRC = path.join(__dirname, "game", "cursor-race.html");
 const OUT = path.join(__dirname, "public", "index.html");
+const MEDIA = path.join(__dirname, "public", "media");
+
+/* The artifact has to carry its pictures and sounds inside it, because there
+   is no server there to fetch them from. Here there is one, and carrying them
+   inline is expensive in a way that is easy to miss: three quarters of that
+   file is base64 of things that are already compressed, so it does not gzip -
+   750 KB only squeezes to 474 KB - and the page is served no-cache, so every
+   visit pulls the lot again.
+
+   So the hosted build takes them back out. Each one is named by a hash of its
+   own contents, which means it can be cached for ever and a changed file is
+   simply a different name. What is left is the game, which does compress. */
+const EXT = {
+  "image/webp": ".webp", "image/png": ".png", "image/jpeg": ".jpg",
+  "image/svg+xml": ".svg", "image/gif": ".gif",
+  "audio/mpeg": ".mp3", "audio/ogg": ".ogg", "audio/wav": ".wav",
+  "font/woff2": ".woff2"
+};
+
+function liftMedia(html) {
+  fs.rmSync(MEDIA, { recursive: true, force: true });   // names are hashes, so stale ones only pile up
+  fs.mkdirSync(MEDIA, { recursive: true });
+  const seen = new Map();
+  let saved = 0, kept = 0;
+  const out = html.replace(/data:([a-z]+\/[a-z0-9+.-]+);base64,([A-Za-z0-9+/=]+)/gi,
+    (whole, mime, b64) => {
+      const ext = EXT[mime.toLowerCase()];
+      if (!ext) { kept++; return whole; }              // nothing to gain, leave it be
+      let name = seen.get(b64);
+      if (!name) {
+        const bytes = Buffer.from(b64, "base64");
+        name = crypto.createHash("sha256").update(bytes).digest("hex").slice(0, 16) + ext;
+        fs.writeFileSync(path.join(MEDIA, name), bytes);
+        seen.set(b64, name);
+      }
+      saved += whole.length - ("media/" + name).length;
+      return "media/" + name;
+    });
+  return { html: out, files: seen.size, saved, kept };
+}
 
 const SKELETON_CSS =
   ':root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}' +
@@ -43,8 +84,17 @@ const ACCOUNT_CSS =
   'background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;' +
   'font:12px "Azeret Mono",ui-monospace,monospace}';
 
-const game = fs.readFileSync(SRC, "utf8");
+const raw = fs.readFileSync(SRC, "utf8");
+const lifted = liftMedia(raw);
+const game = lifted.html;
 const title = (/<title>([^<]*)<\/title>/i.exec(game) || [, "Cursor Clash"])[1];
+
+/* The pictures the first frame needs are asked for in the head, so they are
+   on their way before the game has finished parsing. */
+const preload = fs.readdirSync(MEDIA)
+  .filter(f => /\.(webp|png|jpg|gif|svg)$/.test(f))
+  .map(f => '<link rel="preload" as="image" href="media/' + f + '">')
+  .join("\n");
 
 const page =
   "<!doctype html>\n<html lang=\"en\">\n<head>\n" +
@@ -52,6 +102,7 @@ const page =
   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\n" +
   "<title>" + title + "</title>\n" +
   "<style>" + SKELETON_CSS + ACCOUNT_CSS + "</style>\n" +
+  preload + "\n" +
   "</head>\n<body>\n" +
   "<script src=\"claude-shim.js\"></script>\n" +
   game.replace(/<title>[^<]*<\/title>\s*/i, "") +
@@ -61,4 +112,8 @@ const page =
 
 fs.mkdirSync(path.dirname(OUT), { recursive: true });
 fs.writeFileSync(OUT, page);
-console.log("built " + path.relative(process.cwd(), OUT) + " (" + (page.length / 1024).toFixed(1) + " KB)");
+const mediaBytes = fs.readdirSync(MEDIA)
+  .reduce((a, f) => a + fs.statSync(path.join(MEDIA, f)).size, 0);
+console.log("built " + path.relative(process.cwd(), OUT) + " (" + (page.length / 1024).toFixed(1) + " KB)" +
+  " + " + lifted.files + " media files (" + (mediaBytes / 1024).toFixed(1) + " KB, cached for ever)" +
+  (lifted.kept ? " [" + lifted.kept + " left inline]" : ""));

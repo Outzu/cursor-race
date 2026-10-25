@@ -171,6 +171,46 @@ function peerList() {
   for (const [peer, p] of peers) out.push({ peer, uid: p.uid, presence: p.presence || {} });
   return out;
 }
+
+/* What the lobby screen actually needs.
+
+   The roster used to go out whole: every peer's presence, to every peer, so
+   the bytes went as the square of the people on the site - 21 KB a message
+   at a hundred and fifty of them, and that message sent to all hundred and
+   fifty. Nothing on that screen reads an individual: the lobby list wants
+   counts, the made lobbies want their names, and the one peer that carries a
+   lobby's name wants to know whether it is still the one. That is all this
+   is, and it is the size of the lobby list rather than the size of the crowd.
+
+   Players sitting in a lobby together still get each other in full - that is
+   the table's own room, and it stops at ten. */
+function lobbyDigest() {
+  const seats = new Map();
+  const people = new Set();
+  for (const [peer, p] of peers) {
+    const pr = p.presence || {};
+    people.add(p.uid || peer);
+    const at = pr.table;
+    if (typeof at !== "string" || !at) continue;
+    let slot = seats.get(at);
+    if (!slot) { slot = { who: new Set(), busy: false, first: peer }; seats.set(at, slot); }
+    slot.who.add(p.uid || peer);          // a second tab is not a second pilot
+    if (pr.busy) slot.busy = true;
+    if (peer < slot.first) slot.first = peer;
+    if (pr.lname) {
+      slot.name = String(pr.lname).slice(0, 24);
+      slot.priv = pr.priv ? 1 : 0;
+    }
+  }
+  const lobbies = {};
+  for (const [id, slot] of seats) {
+    const row = { n: slot.who.size, first: slot.first };
+    if (slot.busy) row.busy = 1;
+    if (slot.name) { row.name = slot.name; row.priv = slot.priv; }
+    lobbies[id] = row;
+  }
+  return { people: people.size, lobbies };
+}
 function roomList(name) {
   const set = rooms.get(name);
   const out = [];
@@ -191,7 +231,7 @@ function broadcastRoom(name) { dirtyRooms.add(name); }
 setInterval(() => {
   if (lobbyDirty) {
     lobbyDirty = false;
-    const msg = JSON.stringify({ type: "peers", peers: peerList() });
+    const msg = JSON.stringify({ type: "peers", sum: lobbyDigest() });
     for (const p of peers.values()) p.conn.send(msg);
   }
   for (const name of dirtyRooms) {
@@ -780,7 +820,12 @@ const server = http.createServer((req, res) => {
     if (err) { res.writeHead(404, { "content-type": MIME[".txt"] }); return res.end("not found"); }
     const head = { "content-type": MIME[path.extname(full)] || "application/octet-stream" };
     if (setCookie.length) head["set-cookie"] = setCookie;
-    head["cache-control"] = file === "index.html" ? "no-cache" : "public, max-age=300";
+    /* Everything under media/ is named by a hash of what is in it, so it can
+       never go stale: a changed file is a different name. The page itself has
+       to be revalidated, since its name never changes. */
+    head["cache-control"] = file === "index.html" ? "no-cache"
+      : /^media\//.test(file) ? "public, max-age=31536000, immutable"
+      : "public, max-age=300";
     res.writeHead(200, head);
     res.end(body);
   });

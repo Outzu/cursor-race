@@ -70,6 +70,14 @@
           if (r) r.apply(m.peers || []);
           return;
         }
+        /* A digest rather than a roster: there is nobody to diff, so it goes
+           straight through with our own peer id, which the summary needs to
+           say whether we are the one carrying a lobby's name. */
+        if (m.sum) {
+          fire(peerFns, { peers: peers, joined: [], left: [], updated: [],
+                          sum: m.sum, me: myPeer });
+          return;
+        }
         var before = peers;
         peers = Object.freeze((m.peers || []).map(function (p) {
           return Object.freeze({
