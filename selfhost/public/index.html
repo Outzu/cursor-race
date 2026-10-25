@@ -118,7 +118,7 @@
     font-variant-numeric: tabular-nums;
     color: var(--ink);
   }
-  .readout .unit.out { color: #ff5470; }
+  .readout .unit.out { color: #ff5470; pointer-events: auto; cursor: pointer; }
   .readout .unit {
     margin-top: 8px;
     font-family: var(--data);
@@ -1773,7 +1773,7 @@
     /* Kamish's Wrath, by Cursors-4U.com, under CC BY-NC 4.0. The credit it
        asks for is on the terms screen; the licence is why this game takes no
        money. ART_CREDITS, above, is what the terms screen prints. */
-    { id: "kamish", name: "Kamish's Wrath", cost: 2000, art: ART_KAMISH, draw(c, x, y, col, now) {
+    { id: "kamish", name: "Kamish's Wrath", cost: 2000, art: ART_KAMISH, size: 60, draw(c, x, y, col, now) {
       if (drawArt(c, ART_KAMISH, x, y, 60, now)) return;
       c.save();                                   // until the picture is decoded
       c.shadowColor = "#ff4d4d"; c.shadowBlur = 14;
@@ -1786,7 +1786,7 @@
       c.save(); c.shadowColor = "#4da6ff"; c.shadowBlur = 14; c.fillStyle = withA(col, .9);
       c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill(); c.restore();
     } },
-    { id: "mcsword", name: "Minecraft Sword", cost: 2800, art: ART_MCSWORD, draw(c, x, y, col, now) {
+    { id: "mcsword", name: "Minecraft Sword", cost: 2800, art: ART_MCSWORD, size: 64, draw(c, x, y, col, now) {
       if (drawArt(c, ART_MCSWORD, x, y, 64, now)) return;
       c.save(); c.shadowColor = "#b6c2d4"; c.shadowBlur = 12; c.fillStyle = withA(col, .9);
       c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill(); c.restore();
@@ -1794,7 +1794,7 @@
     /* An arrowhead on fire. The plume behind it is three tongues of flame,
        each a curve whose tip wanders frame to frame, hot white at the root
        and the pilot's colour out at the edges. */
-    { id: "phoenix", name: "Phoenix", cost: 3200, draw(c, x, y, col, now) {
+    { id: "phoenix", name: "Phoenix", cost: 3200, size: 68, draw(c, x, y, col, now) {
       c.save(); c.translate(x, y);
       const tongue = (ox, len, w, ph, fill) => {
         const sway = Math.sin(now / 90 + ph) * 3.2, lick = len + Math.sin(now / 70 + ph * 1.7) * 3;
@@ -1824,7 +1824,7 @@
     /* A black disc over a blazing corona: the light is all round the edge,
        with four flare spikes turning slowly behind it and a thin rim in the
        pilot's colour so it still reads as theirs. */
-    { id: "eclipse", name: "Eclipse", cost: 3600, draw(c, x, y, col, now) {
+    { id: "eclipse", name: "Eclipse", cost: 3600, size: 56, draw(c, x, y, col, now) {
       c.save(); c.translate(x, y);
       const breathe = 1 + .06 * Math.sin(now / 300);
       const g = c.createRadialGradient(0, 0, 7, 0, 0, 20 * breathe);
@@ -2479,6 +2479,7 @@
     stake: STAKES[1],
     settled: false,
     lastOne: null,          // who outlived the field, once that is known
+    lastRow: null,          // and what we last saw of them, should they vanish
     result: null,
     entrants: 1,
     newUnlocks: [],
@@ -2887,7 +2888,7 @@
     S.rid = rid;
     S.world = makeWorld(rid);
     S.phase = "open";
-    S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null;
+    S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null; S.lastRow = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
     S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false;
     ghostTrails.clear(); ghostPaths.clear(); PARTS.length = 0; lastSpark.clear();
@@ -2901,8 +2902,27 @@
     paintVeil(); paintRail();
   }
 
+  /* Leaving the stands before the race is over. The result will come to
+     the others; this pilot has seen theirs. If they opened the race, the
+     live/ document is theirs to clear once it is done: the server does that
+     itself where there is one, and where there is not, it is checked on at
+     the point past which no race can still be running. */
+  function leaveStands() {
+    if (!(S.phase === "watching" && S.death)) return;
+    if (S.round && S.round.host === S.me && S.rid) {
+      const rid = S.rid, ref = roundRef();
+      if (ref) setTimeout(() => {
+        ref.get().then(d => {
+          if (d && d.rid === rid) ref.set({ rid: "", startsAt: 0, serverNow: Date.now(), host: "" });
+        }).catch(() => {});
+      }, 300000);
+    }
+    $("outLine").hidden = true;
+    backToIdle();
+  }
+
   function backToIdle() {
-    S.phase = "idle"; S.rid = null; S.joined = false; S.bet = null; S.lastOne = null;
+    S.phase = "idle"; S.rid = null; S.joined = false; S.bet = null; S.lastOne = null; S.lastRow = null;
     S.death = null; S.result = null; S.dist = 0; S.solo = false;
     exitFocus();
     pushPresence(true);
@@ -2980,7 +3000,7 @@
   function raceDecided() {
     if (S.solo) return false;
     const f = roundField();
-    return f.length >= 2 && f.filter(p => p.racing).length === 1;
+    return Math.max(S.entrants, f.length) >= 2 && f.filter(p => p.racing).length === 1;
   }
 
   function roundField() {
@@ -3044,20 +3064,32 @@
   /* ---------- round resolution ---------- */
   function resolveRound() {
     if (S.settled) return;
-    const field = roundField();
+    let field = roundField();
     if (!field.length) return;
+    /* The field is read off presence, so a pilot whose connection drops is
+       simply not in it any more. The server keeps them: a seat taken is a
+       seat paid, and the pot is the seats. Count seats the same way here. */
+    S.entrants = Math.max(S.entrants, field.length);
     const alive = field.filter(p => p.racing);
     const pending = field.filter(p => p.pending);
     if (pending.length) return;
     /* Down to one with others out: decided, and they fly on for the board.
        Remember who, because by the time the channel is empty they have
-       clipped something too and look like everybody else. */
-    if (!S.lastOne && field.length >= 2 && alive.length === 1) S.lastOne = alive[0].uid || alive[0].peer;
+       clipped something too and look like everybody else - and keep what we
+       last saw of them, because if their connection goes they are gone from
+       the field while the server, which still has them, pays them the pot.
+       The page has to say the same. */
+    if (!S.lastOne && S.entrants >= 2 && alive.length === 1) S.lastOne = alive[0].uid || alive[0].peer;
+    if (S.lastOne) {
+      const row = field.find(p => (p.uid || p.peer) === S.lastOne);
+      if (row) S.lastRow = Object.assign({}, row, { racing: false });
+    }
     if (alive.length) return;
 
-    const winner = (S.lastOne && field.find(p => (p.uid || p.peer) === S.lastOne)) ||
-      field.slice().sort((a, b) => b.dist - a.dist)[0];
-    const n = field.length;
+    let winner = S.lastOne ? field.find(p => (p.uid || p.peer) === S.lastOne) : null;
+    if (!winner && S.lastRow) { winner = S.lastRow; field = field.concat([winner]); }
+    if (!winner) winner = field.slice().sort((a, b) => b.dist - a.dist)[0];
+    const n = Math.max(S.entrants, field.length);
     const pot = S.solo ? 0 : n * ENTRY_FEE;
     let gain = 0, betWon = 0;
     if (!S.solo && S.joined && winner && winner.isMe) { gain = pot; S.wins += 1; }
@@ -3109,9 +3141,13 @@
       document.body.classList.remove("hideveil");
     } else {
       /* The others are still flying. Stay and watch them from where you
-         went out; the result comes when the channel is empty. */
+         went out; the result comes when the channel is empty. Your own run
+         is over, though, so you get your cursor and the page back - and a
+         way out, for when the last one in is taking their time. */
       S.phase = "watching";
-      $("outLine").textContent = why + " at " + Math.round(S.dist / 10) + " m";
+      exitFocus();
+      $("outLine").textContent = why + " at " + Math.round(S.dist / 10) + " m" +
+        (TOUCH ? " \u00b7 tap here to leave" : " \u00b7 Esc to leave");
       $("outLine").hidden = false;
     }
     pushPresence(true);
@@ -5220,11 +5256,15 @@
   $("skinHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("skins"); });
   $("tailHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("tails"); });
   $("groundHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("grounds"); });
+  $("outLine").addEventListener("click", leaveStands);
 
   /* The chosen head doubles as the page's own mouse cursor. A CSS cursor is
-     one picture, so the head is drawn into a canvas and handed over as a PNG;
-     the box is big enough for the largest of them. */
-  const CURSOR_BOX = 80;
+     one picture, so the head is drawn into a canvas and handed over as a PNG.
+     The box stays at 40: Chrome and Firefox will not show a cursor over 32px
+     while any of it would fall outside the viewport, so a bigger box is a
+     wider band round every edge where the head gives way to the plain arrow.
+     The heads drawn larger than that in the channel are scaled to fit. */
+  const CURSOR_BOX = 40;
   let cursorUrl = "";
   const cursorCanvas = document.createElement("canvas");
   cursorCanvas.width = cursorCanvas.height = CURSOR_BOX;
@@ -5234,6 +5274,8 @@
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, CURSOR_BOX, CURSOR_BOX);
     g.translate(CURSOR_BOX / 2, CURSOR_BOX / 2);
+    const k = Math.min(1, CURSOR_BOX / (head.size || CURSOR_BOX));
+    g.scale(k, k);
     try { head.draw(g, 0, 0, S.color, now || 0); } catch (e) { return; }
     let url;
     try { url = cursorCanvas.toDataURL("image/png"); } catch (e) { return; }
@@ -5260,6 +5302,7 @@
     if (document.activeElement === nameInput) return;
     if (e.code === "Escape" && document.body.classList.contains("terms")) { closeTerms(); return; }
     if (e.code === "Escape" && document.body.classList.contains("boards")) { closeBoards(); return; }
+    if (e.code === "Escape" && S.phase === "watching" && S.death) { leaveStands(); return; }
     if (e.code === "Space" || e.code === "Enter") {
       e.preventDefault();
       if (S.phase === "open" && !S.joined) joinRace();
