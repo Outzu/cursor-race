@@ -118,6 +118,7 @@
     font-variant-numeric: tabular-nums;
     color: var(--ink);
   }
+  .readout .unit.out { color: #ff5470; }
   .readout .unit {
     margin-top: 8px;
     font-family: var(--data);
@@ -1070,6 +1071,7 @@
       <div class="readout" id="readout" hidden>
         <div class="big" id="distBig">0</div>
         <div class="unit">metres clear</div>
+        <div class="unit out" id="outLine" hidden></div>
         <div class="coinline" id="coinLine"><span class="pip"></span><b id="coinNow">0</b><span id="coinWord">coins</span></div>
         <div class="coinline" id="gemLine" hidden><span class="pip gem"></span><b id="gemNow">0</b><span>gems</span></div>
       </div>
@@ -2281,6 +2283,7 @@
     bet: null,            // {on, amt}
     stake: STAKES[1],
     settled: false,
+    lastOne: null,          // who outlived the field, once that is known
     result: null,
     entrants: 1,
     newUnlocks: [],
@@ -2689,13 +2692,13 @@
     S.rid = rid;
     S.world = makeWorld(rid);
     S.phase = "open";
-    S.joined = false; S.bet = null; S.settled = false; S.result = null;
+    S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
     S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false;
     ghostTrails.clear(); ghostPaths.clear(); PARTS.length = 0; lastSpark.clear();
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
-    $("gemLine").hidden = true;
+    $("gemLine").hidden = true; $("outLine").hidden = true;
     exitFocus();
     document.body.classList.remove("hideveil");
     document.body.classList.remove("settings");
@@ -2704,7 +2707,7 @@
   }
 
   function backToIdle() {
-    S.phase = "idle"; S.rid = null; S.joined = false; S.bet = null;
+    S.phase = "idle"; S.rid = null; S.joined = false; S.bet = null; S.lastOne = null;
     S.death = null; S.result = null; S.dist = 0; S.solo = false;
     exitFocus();
     pushPresence(true);
@@ -2768,7 +2771,7 @@
     ghostTrails.clear(); ghostPaths.clear(); PARTS.length = 0; lastSpark.clear();
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
-    $("gemLine").hidden = true;
+    $("gemLine").hidden = true; $("outLine").hidden = true;
     document.body.classList.remove("hideveil");
     $("coinNow").textContent = "0";
     enterFocus(true);
@@ -2851,12 +2854,14 @@
     const alive = field.filter(p => p.racing);
     const pending = field.filter(p => p.pending);
     if (pending.length) return;
-    const over = alive.length === 0 || (field.length >= 2 && alive.length === 1);
-    if (!over) return;
+    /* Down to one with others out: decided, and they fly on for the board.
+       Remember who, because by the time the channel is empty they have
+       clipped something too and look like everybody else. */
+    if (!S.lastOne && field.length >= 2 && alive.length === 1) S.lastOne = alive[0].uid || alive[0].peer;
+    if (alive.length) return;
 
-    const winner = alive.length === 1
-      ? alive[0]
-      : field.slice().sort((a, b) => b.dist - a.dist)[0];
+    const winner = (S.lastOne && field.find(p => (p.uid || p.peer) === S.lastOne)) ||
+      field.slice().sort((a, b) => b.dist - a.dist)[0];
     const n = field.length;
     const pot = S.solo ? 0 : n * ENTRY_FEE;
     let gain = 0, betWon = 0;
@@ -2866,8 +2871,8 @@
     if (!S.serverLedger) S.coins += gain + betWon;
     S.settled = true;
     S.phase = "over";
-    // the winner is whoever is still flying, so they are ahead even if their
-    // distance has not passed the wrecks yet
+    // the winner outlived the field, so they are ahead even if their
+    // distance has not passed the other wrecks
     const me = field.find(p => p.isMe);
     const myDist = me ? me.dist : 0;
     const ahead = field.filter(p => !p.isMe &&
@@ -2901,10 +2906,19 @@
 
   function die(why) {
     if (S.phase !== "racing") return;
-    S.phase = "over";
-    S.death = { dist: S.dist, why };
-    exitFocus();
-    document.body.classList.remove("hideveil");
+    // the wreck stays where it happened, as a point in the channel
+    S.death = { dist: S.dist, why, x: S.cx, u: S.dist + H - S.cy };
+    if (S.solo) {
+      S.phase = "over";
+      exitFocus();
+      document.body.classList.remove("hideveil");
+    } else {
+      /* The others are still flying. Stay and watch them from where you
+         went out; the result comes when the channel is empty. */
+      S.phase = "watching";
+      $("outLine").textContent = why + " at " + Math.round(S.dist / 10) + " m";
+      $("outLine").hidden = false;
+    }
     pushPresence(true);
     saveProfile();
     paintVeil(); paintRail(); paintSkins();
@@ -3148,7 +3162,7 @@
     const state = S.phase === "racing" ? "racing"
       : S.phase === "open" ? (S.joined ? "ready" : "lobby")
       : S.phase === "over" ? "out"
-      : S.phase === "watching" ? "watching"
+      : S.phase === "watching" ? (S.death && S.joined ? "out" : "watching")
       : "lobby";
     const body = {
       who: S.name || "pilot",
@@ -3515,11 +3529,13 @@
       ctx.fillStyle = withA(S.color, .16);
       ctx.beginPath(); ctx.arc(S.cx, S.cy, R, 0, TAU); ctx.fill();
       mine.draw(ctx, S.cx, S.cy, S.color, now);
-    } else if (S.death && S.phase === "over") {
+    } else if (S.death && (S.phase === "over" || S.phase === "watching")) {
+      const wx = S.phase === "watching" ? S.death.x : S.cx;
+      const wy = S.phase === "watching" ? H - (S.death.u - dist) : S.cy;
       ctx.strokeStyle = "#ff5470"; ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(S.cx - 9, S.cy - 9); ctx.lineTo(S.cx + 9, S.cy + 9);
-      ctx.moveTo(S.cx + 9, S.cy - 9); ctx.lineTo(S.cx - 9, S.cy + 9);
+      ctx.moveTo(wx - 9, wy - 9); ctx.lineTo(wx + 9, wy + 9);
+      ctx.moveTo(wx + 9, wy - 9); ctx.lineTo(wx - 9, wy + 9);
       ctx.stroke();
     }
 
