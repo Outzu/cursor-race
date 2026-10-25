@@ -1365,6 +1365,105 @@
 
   const pillarCache = new Map();
 
+  /* What a milestone's plaza is strewn with. The generator lays out boxes
+     and those boxes are still the hitboxes; these fill them with something
+     to look at, each box drawing its own kind from the list, so a plaza is
+     a jumble of crates and wheels and blades rather than a row of one thing.
+     Each is given the box (x, y, w, h on screen), the clock for the ones
+     that turn, and the box's place in the channel as a seed so that no two
+     spin in step. */
+  const OBSTACLES = [
+    { id: "crate", hit: "hit a crate", draw(c, x, y, w, h, now, seed) {
+      const n = Math.max(1, Math.round(w / h)), s = w / n;      // square crates across the box
+      for (let k = 0; k < n; k++) {
+        const cx = x + k * s;
+        c.fillStyle = "#8a5a2b"; c.fillRect(cx, y, s, h);
+        c.fillStyle = "#a86f38"; c.fillRect(cx + 2, y + 2, s - 4, h - 4);
+        c.strokeStyle = "#5c3a18"; c.lineWidth = 2;
+        c.strokeRect(cx + 1, y + 1, s - 2, h - 2);
+        c.beginPath();                                             // the brace
+        c.moveTo(cx + 4, y + 4); c.lineTo(cx + s - 4, y + h - 4);
+        c.moveTo(cx + s - 4, y + 4); c.lineTo(cx + 4, y + h - 4);
+        c.stroke();
+      }
+    } },
+    { id: "wheel", hit: "hit a wheel", draw(c, x, y, w, h, now, seed) {
+      const n = Math.max(1, Math.round(w / h)), s = w / n, r = Math.min(s, h) / 2 - 1;
+      for (let k = 0; k < n; k++) {
+        c.save(); c.translate(x + k * s + s / 2, y + h / 2);
+        c.rotate(now / 420 * (k % 2 ? -1 : 1) + seed);
+        c.fillStyle = "#1c1c22"; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.fill();     // the tyre
+        c.strokeStyle = "#6b7280"; c.lineWidth = Math.max(2, r * .16);
+        c.beginPath(); c.arc(0, 0, r * .6, 0, TAU); c.stroke();                      // the rim
+        c.lineWidth = 2;
+        for (let j = 0; j < 5; j++) {
+          const a = j * TAU / 5;
+          c.beginPath(); c.moveTo(0, 0); c.lineTo(Math.cos(a) * r * .6, Math.sin(a) * r * .6); c.stroke();
+        }
+        c.fillStyle = "#9aa3b2"; c.beginPath(); c.arc(0, 0, r * .16, 0, TAU); c.fill();
+        c.restore();
+      }
+    } },
+    { id: "shuriken", hit: "hit a shuriken", draw(c, x, y, w, h, now, seed) {
+      const n = Math.max(1, Math.round(w / h)), s = w / n, r = Math.min(s, h) / 2;
+      for (let k = 0; k < n; k++) {
+        c.save(); c.translate(x + k * s + s / 2, y + h / 2);
+        c.rotate(now / 150 * (k % 2 ? -1 : 1) + seed);
+        c.beginPath();
+        for (let j = 0; j < 4; j++) {
+          const a = j * Math.PI / 2;
+          c.lineTo(Math.cos(a) * r, Math.sin(a) * r);
+          c.lineTo(Math.cos(a + Math.PI / 4) * r * .3, Math.sin(a + Math.PI / 4) * r * .3);
+        }
+        c.closePath();
+        c.fillStyle = "#c8ccd4"; c.fill();
+        c.strokeStyle = "#4b5563"; c.lineWidth = 1.5; c.stroke();
+        c.fillStyle = "#0b0f1a"; c.beginPath(); c.arc(0, 0, r * .14, 0, TAU); c.fill();   // the hole
+        c.restore();
+      }
+    } },
+    { id: "barrel", hit: "hit a barrel", draw(c, x, y, w, h, now, seed) {
+      const n = Math.max(1, Math.round(w / (h * .8))), s = w / n;
+      for (let k = 0; k < n; k++) {
+        const cx = x + k * s + 1, bw = s - 2;
+        c.fillStyle = "#7a4a22"; c.fillRect(cx, y, bw, h);
+        c.fillStyle = "#95602e"; c.fillRect(cx + bw * .2, y, bw * .6, h);          // the lit middle
+        c.fillStyle = "rgba(0,0,0,.25)";
+        c.fillRect(cx + bw * .34, y, 1.5, h); c.fillRect(cx + bw * .66, y, 1.5, h);   // stave joins
+        c.fillStyle = "#3b3b45";                                                  // the hoops
+        c.fillRect(cx, y + h * .18, bw, 3); c.fillRect(cx, y + h * .72, bw, 3);
+      }
+    } },
+    { id: "saw", hit: "hit a saw blade", draw(c, x, y, w, h, now, seed) {
+      const n = Math.max(1, Math.round(w / h)), s = w / n, r = Math.min(s, h) / 2;
+      for (let k = 0; k < n; k++) {
+        c.save(); c.translate(x + k * s + s / 2, y + h / 2);
+        c.rotate(now / 110 * (k % 2 ? -1 : 1) + seed);
+        c.beginPath();
+        for (let j = 0; j < 24; j++) {                                            // twelve teeth
+          const a = j * TAU / 24, rr = j % 2 ? r : r * .8;
+          c.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+        }
+        c.closePath();
+        c.fillStyle = "#b8bec8"; c.fill();
+        c.strokeStyle = "#555c6b"; c.lineWidth = 1.2; c.stroke();
+        c.fillStyle = "#2b2f3a"; c.beginPath(); c.arc(0, 0, r * .3, 0, TAU); c.fill();
+        c.fillStyle = "#0b0f1a"; c.beginPath(); c.arc(0, 0, r * .1, 0, TAU); c.fill();
+        c.restore();
+      }
+    } },
+    { id: "brick", hit: "hit a brick wall", draw(c, x, y, w, h, now, seed) {
+      c.fillStyle = "#6e2f2f"; c.fillRect(x, y, w, h);
+      const rows = Math.max(2, Math.round(h / 11)), rh = h / rows, bw = 20;
+      c.fillStyle = "#3a1a1a";
+      for (let r = 0; r <= rows; r++) c.fillRect(x, y + r * rh - .75, w, 1.5);        // the courses
+      for (let r = 0; r < rows; r++) {
+        const off = (r % 2) * bw / 2;                                              // half a brick over, each course
+        for (let bx = x + off; bx < x + w; bx += bw) c.fillRect(bx - .75, y + r * rh, 1.5, rh);
+      }
+    } }
+  ];
+
   /* How much clear channel is left to steer through at the depth this pillar
      sits at, counting everything already placed that overlaps it. Each one
      blocks its own width plus a cursor's radius either side, because that is
@@ -1433,6 +1532,7 @@
     for (let i = 0; i < count; i++) {
       const u = u0 + (u1 - u0) * ((i + 0.15 + rnd() * 0.7) / count);
       const h = 26 + rnd() * 30;
+      const kind = Math.floor(rnd() * OBSTACLES.length);   // seeded, so every pilot sees the same jumble
       // the channel at both ends of the pillar's depth, so it never eats a wall
       const lo = Math.max(centerX(u, wd) - halfW(u), centerX(u + h, wd) - halfW(u + h));
       const hi = Math.min(centerX(u, wd) + halfW(u), centerX(u + h, wd) + halfW(u + h));
@@ -1444,7 +1544,7 @@
       for (let tryN = 0; tryN < 5; tryN++) {
         const w = Math.max(40, want * (1 - tryN * 0.16));
         const room = Math.max(0, (hi - lo) / 2 - w / 2 - 40);
-        const cand = { u, x: (lo + hi) / 2 + (rnd() * 2 - 1) * room, w, h };
+        const cand = { u, x: (lo + hi) / 2 + (rnd() * 2 - 1) * room, w, h, kind };
         if (laneLeft(list, cand, wd) >= MIN_LANE) { list.push(cand); break; }
       }
     }
@@ -1793,9 +1893,14 @@
     } },
     /* An arrowhead on fire. The plume behind it is three tongues of flame,
        each a curve whose tip wanders frame to frame, hot white at the root
-       and the pilot's colour out at the edges. */
-    { id: "phoenix", name: "Phoenix", cost: 3200, size: 68, draw(c, x, y, col, now) {
+       and the pilot's colour out at the edges. This one is drawn pointing
+       up and then turned to face the way the cursor is being dragged, so it
+       flies like a rocket: nose first, flame behind, swinging round its own
+       centre as the hand changes direction. Where nothing is dragging it -
+       the shop, the page cursor - it points up. */
+    { id: "phoenix", name: "Phoenix", cost: 3200, size: 68, draw(c, x, y, col, now, heading) {
       c.save(); c.translate(x, y);
+      c.rotate((heading == null ? -Math.PI / 2 : heading) + Math.PI / 2);
       const tongue = (ox, len, w, ph, fill) => {
         const sway = Math.sin(now / 90 + ph) * 3.2, lick = len + Math.sin(now / 70 + ph * 1.7) * 3;
         c.beginPath();
@@ -2467,6 +2572,7 @@
     startAt: 0,
     dist: 0,
     cx: W / 2, cy: H * 0.66,
+    heading: -Math.PI / 2,  // which way the cursor was last dragged; up until it moves
     inside: false,
     held: false,           // pressed up against the starting grid
     regions: [],           // other servers a player could be on
@@ -2616,6 +2722,24 @@
 
   /* ---------- focus mode ---------- */
   const ghostTrails = new Map();
+
+  /* Which way a cursor is going, for the heads that point. Turned toward the
+     latest movement rather than snapped to it, so a jittery hand does not
+     make it twitch, and left where it was when the cursor stands still. */
+  function turnToward(cur, target, k) {
+    let d = target - cur;
+    while (d > Math.PI) d -= TAU;
+    while (d < -Math.PI) d += TAU;
+    return cur + d * k;
+  }
+  const ghostHeads = new Map();                  // peer -> { x, y, a }
+  function ghostHeading(peer, x, y) {
+    let g = ghostHeads.get(peer);
+    if (!g) { g = { x, y, a: -Math.PI / 2 }; ghostHeads.set(peer, g); return g.a; }
+    const dx = x - g.x, dy = y - g.y;
+    if (dx * dx + dy * dy > 2.25) { g.a = turnToward(g.a, Math.atan2(dy, dx), .35); g.x = x; g.y = y; }
+    return g.a;
+  }
 
   /* Another pilot's cursor arrives about twenty times a second, and drawing it
      wherever the last packet left it steps visibly at sixty frames. So each
@@ -2891,7 +3015,8 @@
     S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null; S.lastRow = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
     S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false;
-    ghostTrails.clear(); ghostPaths.clear(); PARTS.length = 0; lastSpark.clear();
+    ghostTrails.clear(); ghostPaths.clear(); ghostHeads.clear(); PARTS.length = 0; lastSpark.clear();
+    S.heading = -Math.PI / 2;
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
     $("gemLine").hidden = true; $("outLine").hidden = true;
@@ -2983,7 +3108,8 @@
     S.phase = "open";
     S.dist = 0; S.trail = []; S.death = null; S.result = null;
     S.runCoins = 0; S.gatesPassed = 0; S.newUnlocks = []; S.entrants = 1;
-    ghostTrails.clear(); ghostPaths.clear(); PARTS.length = 0; lastSpark.clear();
+    ghostTrails.clear(); ghostPaths.clear(); ghostHeads.clear(); PARTS.length = 0; lastSpark.clear();
+    S.heading = -Math.PI / 2;
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
     $("gemLine").hidden = true; $("outLine").hidden = true;
@@ -3173,7 +3299,7 @@
     if (breakE(u) > 0) {
       for (const p of pillarsNear(u - 80, u + 80, wd)) {
         if (u > p.u - R && u < p.u + p.h + R && Math.abs(cx - p.x) < p.w / 2 + R) {
-          return "clipped a pillar";
+          return OBSTACLES[p.kind || 0].hit;
         }
       }
     }
@@ -3542,13 +3668,9 @@
 
     for (const p of pillarsNear(uMin - 80, uMax + 80, wd)) {
       const y = H - (p.u + p.h - dist);
-      ctx.fillStyle = "#27375a";
-      ctx.fillRect(p.x - p.w / 2, y, p.w, p.h);
-      ctx.fillStyle = "rgba(254,183,3,.28)";
-      ctx.fillRect(p.x - p.w / 2, y, p.w, 2);
-      ctx.fillStyle = "#feb703";
-      ctx.fillRect(p.x - p.w / 2 - 3, y, 3, p.h);
-      ctx.fillRect(p.x + p.w / 2, y, 3, p.h);
+      ctx.save();
+      OBSTACLES[p.kind || 0].draw(ctx, p.x - p.w / 2, y, p.w, p.h, now, p.u % 7);
+      ctx.restore();
     }
 
     const edge = (xs) => {
@@ -3736,7 +3858,7 @@
         ctx.moveTo(gx + 6, gy - 6); ctx.lineTo(gx - 6, gy + 6);
         ctx.stroke();
       } else {
-        sk.draw(ctx, gx, gy, col, now);
+        sk.draw(ctx, gx, gy, col, now, ghostHeading(p.peer, gx, gy));
       }
       ctx.globalAlpha = out ? 0.4 : 0.9;
       ctx.fillStyle = col;
@@ -3759,7 +3881,7 @@
       }
       ctx.fillStyle = withA(S.color, .16);
       ctx.beginPath(); ctx.arc(S.cx, S.cy, R, 0, TAU); ctx.fill();
-      mine.draw(ctx, S.cx, S.cy, S.color, now);
+      mine.draw(ctx, S.cx, S.cy, S.color, now, S.heading);
     } else if (S.death && (S.phase === "over" || S.phase === "watching")) {
       const wx = S.phase === "watching" ? S.death.x : S.cx;
       const wy = S.phase === "watching" ? H - (S.death.u - dist) : S.cy;
@@ -3845,6 +3967,10 @@
         else {
           awardGates(S.dist + H - S.cy);
           const lastPt = S.trail[S.trail.length - 1];
+          if (lastPt) {
+            const dx = S.cx - lastPt[0], dy = S.cy - lastPt[1];
+            if (dx * dx + dy * dy > 2.25) S.heading = turnToward(S.heading, Math.atan2(dy, dx), .35);
+          }
           if (!lastPt || Math.abs(lastPt[0] - S.cx) > 0.4 || Math.abs(lastPt[1] - S.cy) > 0.4) {
             S.trail.push([S.cx, S.cy, now]);
           }
@@ -4599,6 +4725,7 @@
     if (!S.table && S.db) {
       if (picking) paintTables(); else paintHome();
       veil.dataset.screen = "lobby";
+      drawnLobbies = lobbySig();
       return;
     }
 
@@ -4767,8 +4894,23 @@
      A lobby appearing or disappearing is a different matter and still redraws.
 
      Returns false if the screen it expects is not the one that is up. */
+  /* What the lobby list is made of: which lobbies and what they are called,
+     and separately how many sit in each. The two parts are kept apart because
+     a change to the first needs the veil rebuilt and a change to the second
+     only needs the numbers written into the cards. */
+  function lobbySig() {
+    const counts = tableCounts();
+    const ids = Object.keys(counts).sort();
+    return {
+      list: ids.map(id => id + ":" + ((made.get(id) || {}).name || "")).join("|"),
+      nums: ids.map(id => counts[id].n + (counts[id].busy ? "!" : "")).join(",") + "/" + peopleHere()
+    };
+  }
+  let drawnLobbies = { list: "", nums: "" };     // what the lobby screen was last drawn from
+
   function tickLobbyNumbers() {
     if (veil.dataset.screen !== "lobby") return false;
+    drawnLobbies = lobbySig();
 
     const here = peopleHere();
     const verdict = veil.querySelector(".verdict");
@@ -5329,7 +5471,7 @@
        count that merely ticked is written straight into the card it belongs
        to. Rebuilding for a count threw away whatever was half-typed in the
        name or code box, and flickered. */
-    let lastList = "", lastNums = "", wasCarrier = false;
+    let wasCarrier = false;
     room.onPeers(ch => {
       if (ch.sum) { S.lobbySum = ch.sum; S.myPeer = ch.me || S.myPeer; S.lobbyPeers = []; }
       else { S.lobbyPeers = ch.peers.slice(); S.lobbySum = null; }
@@ -5341,18 +5483,13 @@
         if (now !== wasCarrier) { wasCarrier = now; if (now) pushLobbyPresence(); }
       } else wasCarrier = false;
       if (!S.table) {
-        const counts = tableCounts();
-        const ids = Object.keys(counts).sort();
-        // which lobbies there are and what they are called ...
-        const list = ids.map(id => id + ":" + ((made.get(id) || {}).name || "")).join("|");
-        // ... as against how many are sitting in them
-        const nums = ids.map(id => counts[id].n + (counts[id].busy ? "!" : "")).join(",") +
-          "/" + peopleHere();
-        if (list !== lastList) {
-          lastList = list; lastNums = nums;
-          paintVeil();                              // the list itself is different
-        } else if (nums !== lastNums) {
-          lastNums = nums;
+        /* Compared with what is on the screen, not with what last came in:
+           the veil gets drawn from other places too - leaving a lobby paints
+           it at once, before the roster has heard you have gone - and a
+           cache of what arrived would call that stale card up to date. */
+        const sig = lobbySig();
+        if (sig.list !== drawnLobbies.list) paintVeil();          // the list itself is different
+        else if (sig.nums !== drawnLobbies.nums) {
           // written into the cards where they stand, unless some other screen
           // is up - the result card, say - in which case redraw it properly
           if (!tickLobbyNumbers()) paintVeil();
