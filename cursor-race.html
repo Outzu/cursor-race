@@ -1892,6 +1892,21 @@
   }
 
   /* particles live in world units (u), so they stay where they were dropped */
+  /* The channel's two edges, rebuilt every frame and read twice - once to
+     fill the floor between them, once to stroke the walls. It used to be two
+     arrays of a hundred-odd two-element arrays, built and thrown away sixty
+     times a second: some fifteen thousand short-lived objects every second
+     the game is open, every one of them dead before the next frame. Flat
+     buffers, kept and refilled, draw exactly the same line and leave the
+     collector nothing to do. */
+  let wallCap = 0, wallLX, wallLY, wallRX, wallRY, wallN = 0;
+  function wallRoom(n) {
+    if (n <= wallCap) return;
+    wallCap = Math.max(n + 32, 128);
+    wallLX = new Float64Array(wallCap); wallLY = new Float64Array(wallCap);
+    wallRX = new Float64Array(wallCap); wallRY = new Float64Array(wallCap);
+  }
+
   const PARTS = [];
   const lastSpark = new Map();
   function emitParticles(key, tail, col, x, u, now, rateScale) {
@@ -1917,13 +1932,19 @@
         shape: sp.shape || "dot", drift: sp.drift || 0, sway: sp.sway || 0
       });
     }
-    while (PARTS.length > 420) PARTS.shift();
+    if (PARTS.length > 420) PARTS.splice(0, PARTS.length - 420);   // oldest first, in one go
   }
+  /* Drawn and culled in the same pass, with a write cursor: splicing each
+     dead one out individually shuffles everything after it down the array,
+     so a frame where a lot of them expire at once used to cost the square of
+     their number. Keeping the live ones as we go is one pass either way. */
   function drawParticles(c, dist, now) {
-    for (let i = PARTS.length - 1; i >= 0; i--) {
+    let keep = 0;
+    for (let i = 0; i < PARTS.length; i++) {
       const p = PARTS[i];
       const age = now - p.born;
-      if (age > p.life) { PARTS.splice(i, 1); continue; }
+      if (age > p.life) continue;
+      PARTS[keep++] = p;
       const t = age / 1000;
       const f = 1 - age / p.life;
       const px = p.x + p.vx * t + (p.sway ? Math.sin(t * 3 + p.born) * p.sway : 0);
@@ -1932,6 +1953,7 @@
       c.globalAlpha = 0.9 * f * (p.twinkle ? 0.4 + 0.6 * Math.abs(Math.sin(now / 90 + p.born)) : 1);
       particleShape(c, p, px, H - (pu - dist), r, now);
     }
+    PARTS.length = keep;
     c.globalAlpha = 1;
   }
 
@@ -2849,16 +2871,18 @@
     ctx.fillRect(x0, y0, x1 - x0, y1 - y0);
 
     const step = 8;
-    const left = [], right = [];
+    wallRoom(Math.ceil((y1 - y0) / step) + 4);
+    wallN = 0;
     for (let y = y0 - step; y <= y1 + step; y += step) {
       const u = dist + H - y;
       const hw = halfW(u), c = centerX(u, wd);
-      left.push([c - hw, y]); right.push([c + hw, y]);
+      wallLX[wallN] = c - hw; wallRX[wallN] = c + hw; wallLY[wallN] = y;
+      wallN++;
     }
     ctx.beginPath();
-    ctx.moveTo(left[0][0], left[0][1]);
-    for (let i = 1; i < left.length; i++) ctx.lineTo(left[i][0], left[i][1]);
-    for (let i = right.length - 1; i >= 0; i--) ctx.lineTo(right[i][0], right[i][1]);
+    ctx.moveTo(wallLX[0], wallLY[0]);
+    for (let i = 1; i < wallN; i++) ctx.lineTo(wallLX[i], wallLY[i]);
+    for (let i = wallN - 1; i >= 0; i--) ctx.lineTo(wallRX[i], wallLY[i]);
     ctx.closePath();
     ctx.fillStyle = "#0c1324";
     ctx.fill();
@@ -2940,14 +2964,14 @@
       ctx.fillRect(p.x + p.w / 2, y, 3, p.h);
     }
 
-    const edge = (pts) => {
+    const edge = (xs) => {
       ctx.beginPath();
-      ctx.moveTo(pts[0][0], pts[0][1]);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.moveTo(xs[0], wallLY[0]);
+      for (let i = 1; i < wallN; i++) ctx.lineTo(xs[i], wallLY[i]);
       ctx.strokeStyle = "rgba(0,199,253,.14)"; ctx.lineWidth = 7; ctx.stroke();
       ctx.strokeStyle = "#00c7fd"; ctx.lineWidth = 2; ctx.stroke();
     };
-    edge(left); edge(right);
+    edge(wallLX); edge(wallRX);
 
     /* After the edges, not before: a hoarding stands out past the wall
        and nearer the eye than the channel is, so where the two cross it
