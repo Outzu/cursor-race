@@ -184,6 +184,31 @@ function peerList() {
 
    Players sitting in a lobby together still get each other in full - that is
    the table's own room, and it stops at ten. */
+/* A lobby somebody made is kept on the list for a while after the last pilot
+   steps out of it.
+
+   It used to exist only while someone was sitting in it, which costs nothing
+   to run but makes the one thing you want to do with a public lobby
+   impossible: you cannot go and look at it on the list, because looking means
+   leaving, and leaving means it is gone. So the server remembers the open
+   ones. In memory, capped, and swept - this is an advert, not a record, and
+   it is gone when the server restarts, which is the right lifetime for it. */
+const advertised = new Map();            // id -> { name, priv, until }
+const ADVERT_FOR = 20 * 60 * 1000;
+const ADVERT_MAX = 80;
+
+function remember(id, name, priv) {
+  const row = advertised.get(id) || {};
+  row.name = name; row.priv = priv;
+  row.until = Date.now() + ADVERT_FOR;
+  advertised.set(id, row);
+  if (advertised.size > ADVERT_MAX) {     // oldest advert makes way
+    let oldest = null, at = Infinity;
+    for (const [k, v] of advertised) if (v.until < at) { at = v.until; oldest = k; }
+    if (oldest) advertised.delete(oldest);
+  }
+}
+
 function lobbyDigest() {
   const seats = new Map();
   const people = new Set();
@@ -202,12 +227,26 @@ function lobbyDigest() {
       slot.priv = pr.priv ? 1 : 0;
     }
   }
+  const now = Date.now();
   const lobbies = {};
   for (const [id, slot] of seats) {
     const row = { n: slot.who.size, first: slot.first };
     if (slot.busy) row.busy = 1;
-    if (slot.name) { row.name = slot.name; row.priv = slot.priv; }
+    if (slot.name) {
+      row.name = slot.name; row.priv = slot.priv;
+      remember(id, slot.name, slot.priv);          // keep advertising it
+    } else {
+      const kept = advertised.get(id);             // nobody is carrying it this instant
+      if (kept && kept.until > now) { row.name = kept.name; row.priv = kept.priv; }
+    }
     lobbies[id] = row;
+  }
+  // and the ones standing open with nobody in them yet
+  for (const [id, kept] of advertised) {
+    if (lobbies[id]) continue;
+    if (kept.until <= now) { advertised.delete(id); continue; }
+    if (kept.priv) continue;                       // a private one is not advertised
+    lobbies[id] = { n: 0, first: "", name: kept.name, priv: 0, open: 1 };
   }
   return { people: people.size, lobbies };
 }

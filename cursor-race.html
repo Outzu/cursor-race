@@ -592,9 +592,11 @@
   .go.wide { width: 100%; }
   /* lobbies people made, and the row that makes them */
   .lobhead {
-    font-family: var(--display); font-size: 15px; letter-spacing: .12em;
-    text-transform: uppercase; color: var(--faint); margin: 18px 0 8px;
+    font-family: var(--data); font-size: 11px; letter-spacing: .22em;
+    text-transform: uppercase; color: var(--faint); margin: 4px 0 0;
+    font-weight: 600;
   }
+  .tstate.open { color: var(--amber); }
   .makelob { width: 100%; margin-top: 14px; }
   .makelob.joinrow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
   /* The general input rule sits further down this sheet, so an equally
@@ -627,8 +629,13 @@
     background: transparent; box-shadow: inset 0 0 0 1px var(--wall-line);
   }
   .lobpick .pick.on { color: var(--void); background: var(--amber); box-shadow: none; }
-  /* the verdict class carries the look; this only places it */
-  .lobnote { margin: 0 0 12px; }
+  /* The verdict class carries the look; this only places it. The auto
+     margins matter: .makelob is a plain block, so the measure it inherits
+     from .veil p would otherwise leave it hugging the left while everything
+     around it is centred. The selector names the element as well as the
+     class, because `.veil p` has two components to `.lobnote`'s one and
+     would win the margin back. */
+  .veil p.lobnote { margin: 0 auto 12px; }
   /* the note used to sit between these two rows; it leads now, so the gap
      it was leaving behind has to be put back deliberately */
   .makelob .btnrow { margin-top: 12px; }
@@ -673,7 +680,10 @@
   /* table picker */
   .tables {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    /* auto-fill, not auto-fit: a single player-made lobby used to stretch
+       across the whole row where auto-fit collapses the empty columns, which
+       made one lobby look like a banner rather than one of a set */
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 10px;
     width: min(760px, 94vw);
   }
@@ -3909,15 +3919,12 @@
             '<p>Watching this one. Back a pilot from the rail while they are still flying.</p>');
           return;
         }
-        /* above the lights, which puts it clear of the chequered band - it
-           used to land right across it, which is the one thing on screen it
-           is telling you to get behind */
+        /* Nothing but the lights for a pilot with a seat: by the time the
+           countdown is running they are already holding the cursor, and the
+           line was sitting over the very channel it told them to get into.
+           Somebody watching still gets told that is what they are doing. */
         veil.innerHTML = wrapHTML(
-          '<p class="callout">' + (S.joined
-            ? (TOUCH
-                ? "Drag anywhere to steer. The grid holds you until the lights go out."
-                : "Put your cursor in the channel, behind the grid line.")
-            : "Watching this one.") + '</p>' +
+          (S.joined ? "" : '<p class="callout">Watching this one.</p>') +
           lightsHTML(secs));
         return;
       }
@@ -4080,9 +4087,8 @@
     for (const [id, m] of made) {
       if (m.priv || !m.name) continue;
       const c = counts[id] || { n: 0, busy: false };
-      if (!c.n) continue;                        // it is gone when the last pilot leaves
       const full = c.n >= TABLE_CAP;
-      const status = c.busy ? "racing" : "waiting";
+      const status = c.busy ? "racing" : c.n ? "waiting" : "open";
       rows.push('<button class="tcard' + (full ? " full" : "") + '" data-table="' + id + '"' +
         (full ? " disabled" : "") + '>' +
         '<span class="tname">' + esc(m.name) + '</span>' +
@@ -4103,7 +4109,7 @@
         // what this choice means, before the fields rather than after them
         '<p class="lobnote verdict">' + (makePriv
           ? "Not listed. It gets a five character code, and a link that carries it."
-          : "Listed here for everyone while somebody is sitting in it.") + '</p>' +
+          : "Listed here for everyone.") + '</p>' +
         '<input id="lobname" type="text" maxlength="24" placeholder="Name your lobby" ' +
           'value="' + esc(S.lastLobbyName || "") + '">' +
         '<div class="lobpick">' +
@@ -4116,16 +4122,25 @@
         '</div>' +
       '</div>';
     }
+    /* A code is something you were sent, not something you have; asking for
+       one next to the button people actually came to press made two unrelated
+       things compete. It waits behind its own button now. */
+    if (coding) {
+      return '<div class="makelob joinrow">' +
+        '<input id="joincode" type="text" maxlength="5" placeholder="CODE" autocomplete="off">' +
+        '<button class="go" data-act="joincode">Join</button>' +
+        '<button class="go ghost" data-act="codeoff">Cancel</button>' +
+      '</div>';
+    }
     return '<div class="makelob joinrow">' +
       (S.canBuy
         ? '<button class="go mkbtn" data-act="mkon">Create a lobby</button>'
         : '<button class="go mkbtn" disabled title="sign in to make one">Create a lobby</button>') +
-      '<input id="joincode" type="text" maxlength="5" placeholder="CODE" autocomplete="off">' +
-      '<button class="go ghost" data-act="joincode">Join</button>' +
+      '<button class="go ghost" data-act="codeon">I have a code</button>' +
     '</div>';
   }
 
-  let making = false, makePriv = false;
+  let making = false, makePriv = false, coding = false;
 
   function paintTables() {
     const counts = tableCounts();
@@ -4142,8 +4157,7 @@
     }).join("");
     veil.innerHTML = wrapHTML(
       '<h1 class="brand"><img src="' + LOGO + '" alt="Cursor Clash" decoding="async"></h1>' +
-      '<p>Pick a lobby. Each one runs its own race on its own channel, up to ' +
-        TABLE_CAP + ' pilots.</p>' +
+      '<h3 class="lobhead">The house</h3>' +
       '<div class="tables">' + cards + '</div>' +
       openLobbiesHTML(counts) +
       makeLobbyHTML() +
@@ -4218,8 +4232,10 @@
     const b = e.target.closest("button[data-act]");
     if (!b) return;
     const a = b.dataset.act;
-    if (a === "mkon") { making = true; paintVeil(); return; }
+    if (a === "mkon") { making = true; coding = false; paintVeil(); return; }
     if (a === "mkoff") { making = false; paintVeil(); return; }
+    if (a === "codeon") { coding = true; making = false; paintVeil(); return; }
+    if (a === "codeoff") { coding = false; paintVeil(); return; }
     if (a === "mkpub" || a === "mkpriv") {
       const box = $("lobname");
       if (box) S.lastLobbyName = box.value;      // keep what they have typed
@@ -4232,7 +4248,7 @@
       const box = $("joincode");
       const code = tidyCode(box && box.value);
       if (code.length < 4) { say("a lobby code is five characters"); return; }
-      making = false;
+      making = false; coding = false;
       joinTable(code);
       return;
     }
