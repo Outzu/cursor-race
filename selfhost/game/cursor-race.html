@@ -2581,6 +2581,7 @@
     board: [],
     serverLedger: false,
     cancelled: false,
+    litCheck: false,      // asked once, as the lights come on: is anyone else seated?
     name: "",
     color: COLORS[0],
     skin: "arrow",
@@ -2997,7 +2998,7 @@
     S.phase = "open";
     S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null; S.lastRow = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
-    S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false;
+    S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false; S.litCheck = false;
     ghostTrails.clear(); ghostPaths.clear(); ghostHeads.clear(); PARTS.length = 0; lastSpark.clear();
     S.heading = -Math.PI / 2;
     placeCursorForTouch();
@@ -3878,6 +3879,18 @@
     ctx.restore();
   }
 
+  /* Where there is a server it calls a lone pilot's race off when the
+     lights come on. Where there is not, the page that opened the race asks
+     the same question at the same moment, of the field it can see. */
+  function callOffIfAlone() {
+    if (S.serverLedger || S.solo || S.litCheck || !S.round || S.round.host !== S.me) return;
+    S.litCheck = true;
+    const seated = roundField().filter(p => p.pending || p.racing).length;
+    if (seated >= 2) return;
+    const ref = roundRef();
+    if (ref) ref.set({ rid: "", cancelled: true, serverNow: Date.now(), host: "" }).catch(() => {});
+  }
+
   function msToStart() {
     if (S.solo) return S.startAt - performance.now();
     if (!S.round) return Infinity;
@@ -4612,6 +4625,7 @@
     if (S.phase === "open") {
       const secs = Math.max(0, Math.ceil(msToStart() / 1000));
       if (withinWarmup()) {
+        callOffIfAlone();
         // arriving at a table that is already racing: no countdown to show
         if (!S.joined && msToStart() <= 0) {
           veil.innerHTML = wrapHTML(
@@ -4743,7 +4757,7 @@
       '</div>' +
       '<p id="veilNote">' + (S.db
         ? "Everyone on this link shares one race clock. Open a race and the others have " + S.gateSecs +
-          " seconds to take a seat - if nobody does, the race is called off and your entry comes back."
+          " seconds to take a seat - if nobody has by the time the lights come on, the race is called off and your entry comes back."
         : "Sign-in data is not available here, so this view runs single player only.") + '</p>' +
       noteLine());
   }

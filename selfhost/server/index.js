@@ -539,27 +539,40 @@ function clearRound(r, now) {
   rounds.delete(r.table);
 }
 
+/* A race needs someone to race. Called off, the seats and the bets go back. */
+function callOff(r, now) {
+  for (const [uid, e] of r.entrants) if (e.paid) move(uid, G.ENTRY_FEE, "refund " + r.rid);
+  for (const [uid, b] of r.bets) if (b.paid) move(uid, b.amt, "refund bet " + r.rid);
+  r.settled = true;
+  rounds.delete(r.table);
+  store.set("live/" + r.table, { rid: "", cancelled: true, serverNow: now, host: "" });
+  console.log("%s: race %s called off, nobody else took a seat", r.table, r.rid);
+}
+
 setInterval(() => {
   const now = Date.now();
   for (const r of [...rounds.values()]) {
-    if (r.settled || now < r.startsAt) continue;
+    if (r.settled) continue;
 
-    /* A race needs someone to race: if nobody else confirmed by the time the
-       gate shuts, call it off and hand the money back. Nothing else about the
-       round is decided until this has been asked, or a lone pilot who clipped a
-       wall on the first frame would be settled as the winner of their own pot. */
+    /* The lights come on four seconds before the gate shuts, and a pilot
+       sitting alone under them is not going to be joined in the time left;
+       the page has already stopped asking. So it is called off there, not
+       four seconds later with the lights having run their course. */
+    if (!r.litCheck && now >= r.startsAt - 4000) {
+      r.litCheck = true;
+      if (r.entrants.size < 2) { callOff(r, now); continue; }
+    }
+    if (now < r.startsAt) continue;
+
+    /* Asked once more once the gate has shut, since a seat can still be
+       taken in those last seconds and, in principle, given up. Nothing else
+       about the round is decided until this has been asked, or a lone pilot
+       who clipped a wall on the first frame would be settled as the winner
+       of their own pot. */
     if (!r.checked) {
       if (now < r.startsAt + 700) continue;      // seats are still accepted to +500
       r.checked = true;
-      if (r.entrants.size < 2) {
-        for (const [uid, e] of r.entrants) if (e.paid) move(uid, G.ENTRY_FEE, "refund " + r.rid);
-        for (const [uid, b] of r.bets) if (b.paid) move(uid, b.amt, "refund bet " + r.rid);
-        r.settled = true;
-        rounds.delete(r.table);
-        store.set("live/" + r.table, { rid: "", cancelled: true, serverNow: now, host: "" });
-        console.log("%s: race %s called off, nobody else took a seat", r.table, r.rid);
-        continue;
-      }
+      if (r.entrants.size < 2) { callOff(r, now); continue; }
     }
 
     const list = [...r.entrants.values()];
