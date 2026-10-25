@@ -474,11 +474,11 @@
     color: var(--dim);
     line-height: 1.55;
   }
-  /* The line under the mark, and the one that holds you on the grid: a
-     verdict, only larger. Same face, same colour, same tracking as the
-     verdicts elsewhere on the veil - the size is the only thing that sets
-     them apart. */
-  .veil h1.brand + p, .veil p.callout {
+  /* A verdict, only larger: same face, same colour, same tracking as the
+     verdicts elsewhere on the veil, with the size the one thing that sets
+     them apart. Both lines this was written for have since gone; what is
+     left wearing it is the note telling a spectator they are spectating. */
+  .veil p.callout {
     font-family: var(--data);
     text-transform: uppercase;
     letter-spacing: .22em;
@@ -4079,8 +4079,6 @@
     const here = peopleHere();
     veil.innerHTML = wrapHTML(
       '<h1 class="brand"><img src="' + LOGO + '" alt="Cursor Clash" decoding="async"></h1>' +
-      '<p>Steer a cursor down a channel that keeps narrowing.<br>' +
-        'The last cursor still inside takes the pot.</p>' +
       '<div class="btnrow">' +
         '<button class="go multi" data-act="multi">Multiplayer</button>' +
       '</div>' +
