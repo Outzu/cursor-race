@@ -7,6 +7,7 @@ Exports the game embeds, kept here with their sources so they can be re-cut.
 - `logo-source.png` / `logo.webp` - the mascot mark on the home screen
 - `icon-source.png` / `favicon.png` - the tab icon
 - `homedirect.svg` / `homedirect.webp` - the HomeDirect sponsor board
+- `trophy-source.png` / `trophy.webp` - the button that opens the board on a phone
 - `sfx/prepare.mp3` - the countdown cue, mono 64k; multiplayer only, since a
   single-player run has no gate to count down
 
