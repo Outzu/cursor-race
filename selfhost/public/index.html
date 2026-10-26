@@ -2288,6 +2288,26 @@
     return out;
   }
 
+  /* The ground, rendered once at device resolution into a canvas two tiles
+     taller than the view, so that it can be copied into place each frame
+     rather than filled. Rebuilt when the view changes size or the ground
+     is changed; a tile's worth of slide never reaches its ends. */
+  let groundStrip = null, groundStripKey = "";
+  function groundStripFor(x0, y0, x1, y1) {
+    const w = Math.ceil((x1 - x0) * scale), h = Math.ceil((y1 - y0 + TILE * 2) * scale);
+    const key = S.ground + "|" + w + "|" + h + "|" + scale.toFixed(4);
+    if (groundStrip && groundStripKey === key) return groundStrip;
+    groundStripKey = key;
+    const c = groundStrip || document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    g.setTransform(scale, 0, 0, scale, 0, 0);
+    g.fillStyle = groundPattern() || hatch || "#18233b";
+    g.fillRect(0, 0, x1 - x0, y1 - y0 + TILE * 2);
+    groundStrip = c;
+    return c;
+  }
+
   /* built the first time it is asked for, then kept */
   const groundPats = new Map();
   function groundPattern() {
@@ -3012,6 +3032,7 @@
     S.round = { rid, startsAt: (Number(d.startsAt) || 0) + skew, host: String(d.host || "") };
     S.rid = rid;
     S.world = makeWorld(rid);
+    warmCues(S.world);
     S.phase = "open";
     S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null; S.lastRow = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
@@ -3099,6 +3120,7 @@
     const rid = "p" + Math.random().toString(36).slice(2, 9);
     S.solo = true; S.joined = true; S.round = null; S.bet = null; S.settled = true;
     S.rid = rid; S.world = makeWorld(rid);
+    warmCues(S.world);
     /* Nobody else is watching a single-player run, so the server times it and
        will not credit more than the clock allows. Tell it one has opened. */
     S.soloId = rid;
@@ -3558,15 +3580,18 @@
     const uMin = dist + H - y1, uMax = dist + H - y0;
 
     /* The ground travels with the world rather than sitting still under it.
-       A pattern is anchored to the canvas, so it has to be slid by however
-       far the channel has come - one tile's worth, wrapped - and the fill
-       widened by a tile at each end so the slide never exposes an edge.
-       Two state changes a frame; the fill itself is the one it always was. */
+       It used to be a pattern fill slid by however far the channel had come,
+       and a pattern fill resamples its tile at every pixel of the canvas -
+       slid by a fraction of a pixel, filtered at every pixel as well. On a
+       phone, over the whole screen, that was the frame budget, and it showed.
+       So the ground is painted once into a strip two tiles taller than the
+       view, and each frame that strip is copied into place shifted by a
+       whole number of device pixels: one blit, nothing to filter. */
     const slide = ((dist % TILE) + TILE) % TILE;
+    const strip = groundStripFor(x0, y0, x1, y1);
     ctx.save();
-    ctx.translate(0, slide);
-    ctx.fillStyle = groundPattern() || hatch || "#18233b";
-    ctx.fillRect(x0, y0 - TILE, x1 - x0, y1 - y0 + TILE * 2);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(strip, Math.round(offX + x0 * scale), Math.round(offY + (y0 - TILE + slide) * scale));
     ctx.restore();
 
     // whatever is standing about on this particular ground
@@ -3967,7 +3992,7 @@
           S.tauntSeed = S.world.seed;
           S.taunts = tauntsFor(S.world);
           S.tauntNext = 0;
-          warmTaunts();
+          warmCues(S.world);                     // usually done at the gate; this is the catch-up
         }
         while (S.tauntNext < S.taunts.length && t >= S.taunts[S.tauntNext].t) {
           sfx(S.taunts[S.tauntNext++].which);
@@ -4380,10 +4405,12 @@
     }
     return list;
   }
-  /* built before the first one is due, so it does not arrive late */
-  function warmTaunts() {
-    for (let i = 0; i < TAUNTS; i++) {
-      const k = "taunt" + i;
+  /* the fallback where there is no AudioContext: elements, built before the
+     first one is due so it does not arrive late, and only for the taunts
+     this channel will play */
+  function warmTaunts(wd) {
+    const want = wd ? tauntsFor(wd).map(t => t.which) : [];
+    for (const k of new Set(want)) {
       if (!sfxEl[k]) { sfxEl[k] = new Audio(SFX[k]); sfxEl[k].preload = "auto"; }
     }
   }
@@ -4420,7 +4447,61 @@
     taunt15: "media/da89d73dfdd92f2e.mp3",
   };
   const sfxEl = Object.create(null);
+
+  /* An <audio> element handed a data: URI decodes it when told to play, on
+     the main thread - and on a phone that is a visible hitch right before
+     every taunt, which is both a stutter and a tell. Web Audio decodes off
+     the thread, once, into a buffer, and starting a buffer costs nothing.
+     The context can only be made on a gesture, so it is made on the first
+     one; the elements stay as the fallback where there is no context yet. */
+  const AC = window.AudioContext || window.webkitAudioContext;
+  let actx = null;
+  function audioCtx() {
+    if (!AC) return null;
+    if (!actx) { try { actx = new AC(); } catch (e) { actx = null; return null; } }
+    if (actx.state === "suspended") { try { actx.resume().catch(() => {}); } catch (e) {} }
+    return actx;
+  }
+  const sfxBuf = Object.create(null);         // which -> AudioBuffer, or the promise of one
+  const isBuf = b => !!b && typeof b.duration === "number";
+  function decodeCue(which) {
+    const ctx = actx;
+    if (!ctx || sfxBuf[which] || !SFX[which]) return;
+    sfxBuf[which] = fetch(SFX[which]).then(r => r.arrayBuffer())
+      .then(ab => new Promise((res, rej) => {
+        // Safari still wants the callbacks; the others hand back a promise
+        const p = ctx.decodeAudioData(ab, res, rej);
+        if (p && p.then) p.then(res, rej);
+      }))
+      .then(buf => { sfxBuf[which] = buf; return buf; })
+      .catch(() => { delete sfxBuf[which]; });
+  }
+  /* Everything a channel will ask for, asked for at the gate rather than
+     when due: the two cues, and only the taunts this channel's schedule
+     actually calls - a handful of the sixteen, not all of them. */
+  function warmCues(wd) {
+    if (!audioCtx()) { warmTaunts(wd); return; }
+    decodeCue("prepare"); decodeCue("go");
+    if (wd) for (const t of tauntsFor(wd)) decodeCue(t.which);
+  }
+  ["pointerdown", "keydown", "touchstart"].forEach(ev =>
+    window.addEventListener(ev, () => { if (audioCtx()) { decodeCue("prepare"); decodeCue("go"); } },
+      { passive: true, once: true }));
+
+  let prepareSrc = null;
   function sfx(which) {
+    const buf = actx && sfxBuf[which];
+    if (isBuf(buf)) {
+      if (which === "go" && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }
+      const src = actx.createBufferSource();
+      src.buffer = buf;
+      const g = actx.createGain();
+      g.gain.value = Math.min(1, musicVol * CUE_LEVEL);
+      src.connect(g).connect(actx.destination);
+      try { src.start(); } catch (e) {}
+      if (which === "prepare") prepareSrc = src;
+      return;
+    }
     /* The button in the corner is the lobby music's, and only the music's.
        Silencing the tune you are humming along to is not the same as asking
        to race deaf - the start, and the jeering, are part of the game rather
@@ -5400,7 +5481,9 @@
         return;
       }
       S.buying = null;
-      if (kind === "skins") S.skin = item.id; else S.tail = item.id;
+      if (kind === "skins") S.skin = item.id;
+      else if (kind === "tails") S.tail = item.id;
+      else S.ground = item.id;                 // this used to fall into the tail
       saveProfile(); paintSkins(); paintRail();
       if (kind === "skins") updateAppCursor();
       pushPresence(true);

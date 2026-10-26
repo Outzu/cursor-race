@@ -2271,6 +2271,26 @@
     return out;
   }
 
+  /* The ground, rendered once at device resolution into a canvas two tiles
+     taller than the view, so that it can be copied into place each frame
+     rather than filled. Rebuilt when the view changes size or the ground
+     is changed; a tile's worth of slide never reaches its ends. */
+  let groundStrip = null, groundStripKey = "";
+  function groundStripFor(x0, y0, x1, y1) {
+    const w = Math.ceil((x1 - x0) * scale), h = Math.ceil((y1 - y0 + TILE * 2) * scale);
+    const key = S.ground + "|" + w + "|" + h + "|" + scale.toFixed(4);
+    if (groundStrip && groundStripKey === key) return groundStrip;
+    groundStripKey = key;
+    const c = groundStrip || document.createElement("canvas");
+    c.width = w; c.height = h;
+    const g = c.getContext("2d");
+    g.setTransform(scale, 0, 0, scale, 0, 0);
+    g.fillStyle = groundPattern() || hatch || "#18233b";
+    g.fillRect(0, 0, x1 - x0, y1 - y0 + TILE * 2);
+    groundStrip = c;
+    return c;
+  }
+
   /* built the first time it is asked for, then kept */
   const groundPats = new Map();
   function groundPattern() {
@@ -2995,6 +3015,7 @@
     S.round = { rid, startsAt: (Number(d.startsAt) || 0) + skew, host: String(d.host || "") };
     S.rid = rid;
     S.world = makeWorld(rid);
+    warmCues(S.world);
     S.phase = "open";
     S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null; S.lastRow = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
@@ -3082,6 +3103,7 @@
     const rid = "p" + Math.random().toString(36).slice(2, 9);
     S.solo = true; S.joined = true; S.round = null; S.bet = null; S.settled = true;
     S.rid = rid; S.world = makeWorld(rid);
+    warmCues(S.world);
     /* Nobody else is watching a single-player run, so the server times it and
        will not credit more than the clock allows. Tell it one has opened. */
     S.soloId = rid;
@@ -3541,15 +3563,18 @@
     const uMin = dist + H - y1, uMax = dist + H - y0;
 
     /* The ground travels with the world rather than sitting still under it.
-       A pattern is anchored to the canvas, so it has to be slid by however
-       far the channel has come - one tile's worth, wrapped - and the fill
-       widened by a tile at each end so the slide never exposes an edge.
-       Two state changes a frame; the fill itself is the one it always was. */
+       It used to be a pattern fill slid by however far the channel had come,
+       and a pattern fill resamples its tile at every pixel of the canvas -
+       slid by a fraction of a pixel, filtered at every pixel as well. On a
+       phone, over the whole screen, that was the frame budget, and it showed.
+       So the ground is painted once into a strip two tiles taller than the
+       view, and each frame that strip is copied into place shifted by a
+       whole number of device pixels: one blit, nothing to filter. */
     const slide = ((dist % TILE) + TILE) % TILE;
+    const strip = groundStripFor(x0, y0, x1, y1);
     ctx.save();
-    ctx.translate(0, slide);
-    ctx.fillStyle = groundPattern() || hatch || "#18233b";
-    ctx.fillRect(x0, y0 - TILE, x1 - x0, y1 - y0 + TILE * 2);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.drawImage(strip, Math.round(offX + x0 * scale), Math.round(offY + (y0 - TILE + slide) * scale));
     ctx.restore();
 
     // whatever is standing about on this particular ground
@@ -3950,7 +3975,7 @@
           S.tauntSeed = S.world.seed;
           S.taunts = tauntsFor(S.world);
           S.tauntNext = 0;
-          warmTaunts();
+          warmCues(S.world);                     // usually done at the gate; this is the catch-up
         }
         while (S.tauntNext < S.taunts.length && t >= S.taunts[S.tauntNext].t) {
           sfx(S.taunts[S.tauntNext++].which);
@@ -4363,10 +4388,12 @@
     }
     return list;
   }
-  /* built before the first one is due, so it does not arrive late */
-  function warmTaunts() {
-    for (let i = 0; i < TAUNTS; i++) {
-      const k = "taunt" + i;
+  /* the fallback where there is no AudioContext: elements, built before the
+     first one is due so it does not arrive late, and only for the taunts
+     this channel will play */
+  function warmTaunts(wd) {
+    const want = wd ? tauntsFor(wd).map(t => t.which) : [];
+    for (const k of new Set(want)) {
       if (!sfxEl[k]) { sfxEl[k] = new Audio(SFX[k]); sfxEl[k].preload = "auto"; }
     }
   }
@@ -4403,7 +4430,61 @@
     taunt15: "data:audio/mpeg;base64,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",
   };
   const sfxEl = Object.create(null);
+
+  /* An <audio> element handed a data: URI decodes it when told to play, on
+     the main thread - and on a phone that is a visible hitch right before
+     every taunt, which is both a stutter and a tell. Web Audio decodes off
+     the thread, once, into a buffer, and starting a buffer costs nothing.
+     The context can only be made on a gesture, so it is made on the first
+     one; the elements stay as the fallback where there is no context yet. */
+  const AC = window.AudioContext || window.webkitAudioContext;
+  let actx = null;
+  function audioCtx() {
+    if (!AC) return null;
+    if (!actx) { try { actx = new AC(); } catch (e) { actx = null; return null; } }
+    if (actx.state === "suspended") { try { actx.resume().catch(() => {}); } catch (e) {} }
+    return actx;
+  }
+  const sfxBuf = Object.create(null);         // which -> AudioBuffer, or the promise of one
+  const isBuf = b => !!b && typeof b.duration === "number";
+  function decodeCue(which) {
+    const ctx = actx;
+    if (!ctx || sfxBuf[which] || !SFX[which]) return;
+    sfxBuf[which] = fetch(SFX[which]).then(r => r.arrayBuffer())
+      .then(ab => new Promise((res, rej) => {
+        // Safari still wants the callbacks; the others hand back a promise
+        const p = ctx.decodeAudioData(ab, res, rej);
+        if (p && p.then) p.then(res, rej);
+      }))
+      .then(buf => { sfxBuf[which] = buf; return buf; })
+      .catch(() => { delete sfxBuf[which]; });
+  }
+  /* Everything a channel will ask for, asked for at the gate rather than
+     when due: the two cues, and only the taunts this channel's schedule
+     actually calls - a handful of the sixteen, not all of them. */
+  function warmCues(wd) {
+    if (!audioCtx()) { warmTaunts(wd); return; }
+    decodeCue("prepare"); decodeCue("go");
+    if (wd) for (const t of tauntsFor(wd)) decodeCue(t.which);
+  }
+  ["pointerdown", "keydown", "touchstart"].forEach(ev =>
+    window.addEventListener(ev, () => { if (audioCtx()) { decodeCue("prepare"); decodeCue("go"); } },
+      { passive: true, once: true }));
+
+  let prepareSrc = null;
   function sfx(which) {
+    const buf = actx && sfxBuf[which];
+    if (isBuf(buf)) {
+      if (which === "go" && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }
+      const src = actx.createBufferSource();
+      src.buffer = buf;
+      const g = actx.createGain();
+      g.gain.value = Math.min(1, musicVol * CUE_LEVEL);
+      src.connect(g).connect(actx.destination);
+      try { src.start(); } catch (e) {}
+      if (which === "prepare") prepareSrc = src;
+      return;
+    }
     /* The button in the corner is the lobby music's, and only the music's.
        Silencing the tune you are humming along to is not the same as asking
        to race deaf - the start, and the jeering, are part of the game rather
@@ -5383,7 +5464,9 @@
         return;
       }
       S.buying = null;
-      if (kind === "skins") S.skin = item.id; else S.tail = item.id;
+      if (kind === "skins") S.skin = item.id;
+      else if (kind === "tails") S.tail = item.id;
+      else S.ground = item.id;                 // this used to fall into the tail
       saveProfile(); paintSkins(); paintRail();
       if (kind === "skins") updateAppCursor();
       pushPresence(true);
