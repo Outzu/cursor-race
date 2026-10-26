@@ -103,6 +103,21 @@
     color: var(--ink);
   }
   .readout .unit.out { color: #ff5470; pointer-events: auto; cursor: pointer; }
+  .entrants.folk { margin: 2px auto 10px; }
+  .entrants .kick {
+    margin-left: 6px;
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    background: none;
+    border: 1px solid #ff5470;
+    color: #ff5470;
+    border-radius: 4px;
+    padding: 1px 6px;
+    cursor: pointer;
+  }
+  .entrants .kick:hover { background: rgba(255,84,112,.18); }
   .readout .unit {
     margin-top: 8px;
     font-family: var(--data);
@@ -518,6 +533,29 @@
     max-width: 74ch;
   }
   .rules b { color: var(--ink); font-weight: 600; }
+  .howto {
+    margin: 4px auto 10px;
+    max-width: 74ch;
+    border: 1px solid color-mix(in srgb, var(--dim) 45%, transparent);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--void) 55%, transparent);
+    text-align: left;
+  }
+  .howto summary {
+    cursor: pointer;
+    list-style: none;
+    padding: 9px 14px;
+    font-family: var(--data);
+    font-size: 11px;
+    letter-spacing: .2em;
+    text-transform: uppercase;
+    color: var(--ink);
+    user-select: none;
+  }
+  .howto summary::-webkit-details-marker { display: none; }
+  .howto summary::before { content: "+ "; color: var(--amber); }
+  .howto[open] summary::before { content: "- "; }
+  .howto .rules { padding: 0 14px 12px; }
   .record {
     font-family: var(--display);
     font-size: clamp(22px, 4vh, 34px);
@@ -2688,6 +2726,7 @@
     board: [],
     serverLedger: false,
     cancelled: false,
+    banned: new Set(),    // whom the owner of this lobby has put out of it
     litCheck: false,      // asked once, as the lights come on: is anyone else seated?
     name: "",
     color: COLORS[0],
@@ -2954,11 +2993,11 @@
       for (const id of Object.keys(S.lobbySum.lobbies)) {
         if (isHouse(id)) continue;
         const row = S.lobbySum.lobbies[id];
-        made.set(id, { name: row.name || "", priv: row.name ? !!row.priv : true });
+        made.set(id, { name: row.name || "", priv: row.name ? !!row.priv : true, own: row.own || "" });
       }
       if (S.table && !isHouse(S.table)) {
         const mine = made.get(S.table);
-        if (mine && mine.name) S.lobbyMeta = { name: mine.name, priv: mine.priv };
+        if (mine && mine.name) S.lobbyMeta = { name: mine.name, priv: mine.priv, own: mine.own };
       }
       return made;
     }
@@ -2966,8 +3005,8 @@
     for (const p of S.lobbyPeers) {
       const pr = p.presence || {};
       if (!pr.table || isHouse(pr.table)) continue;
-      const at = seen.get(pr.table) || { name: "", priv: true };
-      if (pr.lname) { at.name = String(pr.lname).slice(0, 24); at.priv = !!pr.priv; }
+      const at = seen.get(pr.table) || { name: "", priv: true, own: "" };
+      if (pr.lname) { at.name = String(pr.lname).slice(0, 24); at.priv = !!pr.priv; at.own = String(pr.lown || ""); }
       seen.set(pr.table, at);
     }
     made.clear();
@@ -2976,7 +3015,7 @@
     // the name survives whoever made it closing their tab
     if (S.table && !isHouse(S.table)) {
       const mine = seen.get(S.table);
-      if (mine && mine.name) S.lobbyMeta = { name: mine.name, priv: mine.priv };
+      if (mine && mine.name) S.lobbyMeta = { name: mine.name, priv: mine.priv, own: mine.own };
     }
     return seen;
   }
@@ -3009,6 +3048,7 @@
     if (counts[id] && counts[id].n >= TABLE_CAP) { say(lobbyName(id) + " is full"); return; }
     const known = meta || made.get(id);
     await leaveTable(true);                  // clears lobbyMeta, so set it after
+    S.banned = new Set();                    // a new lobby, a clean slate
     // what we know about it: what we were told, else what the roster says
     S.lobbyMeta = isHouse(id) || !known ? null
       : Object.assign({ name: "", priv: true }, known);
@@ -3021,9 +3061,17 @@
           S.peers = ch.peers.slice();
           const me = S.peers.find(p => p.sameTab);
           if (me && me.peer) S.me = S.uid || me.peer;
+          // somebody put out earlier has sat back down: out again
+          if (ownsLobby() && S.banned.size) {
+            for (const p of S.peers) {
+              const uid = p.by || p.peer;
+              if (!p.sameTab && S.banned.has(uid)) r.emit("kick", { uid }).catch(() => {});
+            }
+          }
           paintRail();
           if (S.phase === "idle" || (S.phase === "open" && !withinWarmup())) paintVeil();
         }, () => { S.peers = []; });
+        r.on("kick", kickedBy, () => {});
         r.on("gem", msg => {
           const d = msg && msg.data;
           if (!d || typeof d.id !== "string" || !/^g\d+-\d+$/.test(d.id)) return;
@@ -3154,6 +3202,58 @@
   /* A race needs someone to race against. Count players, not open tabs — two
      tabs of yours are two peers but one pilot, and counting peers would let you
      start a race against yourself. */
+  /* Everyone sitting in this lobby, one entry per player. Whoever made the
+     lobby can put any of the others out of it. */
+  const ownsLobby = () => !!(S.table && !isHouse(S.table) && S.lobbyMeta && S.lobbyMeta.own && S.lobbyMeta.own === S.uid);
+  function lobbyFolk() {
+    const by = new Map();
+    for (const p of S.peers) {
+      const uid = p.by || p.peer, pr = p.presence || {};
+      const prev = by.get(uid);
+      if (prev && !p.sameTab) continue;
+      by.set(uid, { uid, name: String(pr.who || "pilot").slice(0, 14),
+                    color: typeof pr.color === "string" ? pr.color : "#8b99bb", me: !!p.sameTab });
+    }
+    return [...by.values()].sort((a, b) => (b.me - a.me) || a.name.localeCompare(b.name));
+  }
+  function lobbyFolkHTML() {
+    const folk = lobbyFolk();
+    if (!folk.length) return "";
+    const boss = ownsLobby();
+    return '<div class="entrants folk">' + folk.map(p =>
+      '<span class="ent' + (p.me ? " me" : "") + '"><i style="background:' + esc(p.color) + '"></i>' +
+      esc(p.name) + (p.me ? ' <em>you</em>' : '') +
+      (boss && !p.me ? ' <button class="kick" data-act="kick:' + esc(p.uid) + '" title="Remove from the lobby">kick</button>' : '') +
+      '</span>').join("") + '</div>';
+  }
+
+  /* A kick is a word from the owner, carried by the lobby's room: the one
+     named leaves, the owner remembers them, and should they sit back down
+     they are told again. There is nothing to enforce beyond that, and for a
+     lobby of friends there need not be. */
+  function kickPilot(uid) {
+    if (!ownsLobby() || !uid || uid === S.uid || !S.tableRoom) return;
+    S.banned.add(uid);
+    S.tableRoom.emit("kick", { uid }).catch(() => {});
+    say("removed from the lobby");
+  }
+  function kickedBy(msg) {
+    const d = msg && msg.data;
+    if (!d || d.uid !== S.uid || !S.table || isHouse(S.table)) return;
+    if (!S.lobbyMeta || !S.lobbyMeta.own || (msg.uid && msg.uid !== S.lobbyMeta.own)) return;
+    if (S.phase === "open" || S.phase === "racing") return;   // the race is run first
+    const from = lobbyName(S.table);
+    leaveTable(true).then(() => {
+      picking = true;
+      say("the owner of " + from + " removed you");
+      paintVeil(); paintRail();
+    });
+  }
+
+  /* The rules sit folded in a box; a pilot who has opened them keeps them
+     open across the repaints a changing roster brings. */
+  let rulesOpen = false;
+
   function pilotsHere() {
     if (!S.tableRoom) return 1;
     const ids = new Set();
@@ -3606,6 +3706,7 @@
     if (S.table && !isHouse(S.table) && S.lobbyMeta && carriesName()) {
       body.lname = S.lobbyMeta.name;
       body.priv = S.lobbyMeta.priv ? 1 : 0;
+      if (S.lobbyMeta.own) body.lown = S.lobbyMeta.own;
     }
     S.room.presence(body).catch(() => {});
   }
@@ -4167,10 +4268,29 @@
     }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
   }
+  /* A pilot who has not moved for a while is not waiting for a race, they
+     have gone to make coffee; the seat goes back so the count on the list is
+     honest and a race does not open on somebody who will not take a seat. */
+  const AFK_MS = 120000;
+  let lastInput = performance.now();
+  ["pointermove", "pointerdown", "keydown", "touchstart", "wheel"].forEach(ev =>
+    window.addEventListener(ev, () => { lastInput = performance.now(); }, { passive: true }));
+  function kickIdle(now) {
+    if (!S.table || S.phase !== "idle" || S.solo) return;
+    if (now - lastInput < AFK_MS) return;
+    lastInput = now;
+    const from = lobbyName(S.table);
+    leaveTable(true).then(() => {
+      picking = true;
+      say("sent back from " + from + " - no movement for " + Math.round(AFK_MS / 60000) + " minutes");
+      paintVeil(); paintRail();
+    });
+  }
   let hudSpeedAt = 0, hudMetres = -1;            // the readout, last written
   let lastFrameAt = 0;
   function frame(now) {
     lastFrameAt = now;
+    kickIdle(now);
     step(now);
     draw(now);
     animateAppCursor(now);
@@ -4766,7 +4886,7 @@
     for (let i = 0; i < 8 && taken.has(code); i++) code = newCode();
     S.lastLobbyName = "";
     making = false;
-    await joinTable(code, { name, priv: makePriv });
+    await joinTable(code, { name, priv: makePriv, own: S.uid || "" });
     if (S.table === code) say(makePriv ? "private lobby " + code.toUpperCase() + " - share the link"
                                        : "lobby open - it is on the list now");
   }
@@ -4934,6 +5054,8 @@
         '</div>') +
       '<div class="verdict">' + esc(lobbyName(S.table)) + ' &middot; ' +
         pilotsHere() + (pilotsHere() === 1 ? ' pilot' : ' pilots') + ' here</div>' +
+      lobbyFolkHTML() +
+      '<details class="howto"' + (rulesOpen ? " open" : "") + '><summary>How to play</summary>' +
       '<div class="rules">' +
         '<div><b>Guide your cursor</b> down the channel as it scrolls.</div>' +
         '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
@@ -4944,7 +5066,7 @@
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
         '<div><b>Single player pays the same</b> &mdash; no entry, no pot, but the gates and gems are yours.</div>' +
         '<div><b>Gems appear in the channel</b> &mdash; first cursor to touch one takes it. Gems buy tails.</div>' +
-      '</div>' +
+      '</div></details>' +
       walletLine() +
       '<div class="btnrow">' +
         (canOpenRace()
@@ -5153,6 +5275,15 @@
   }
 
   veil.addEventListener("click", e => {
+    // the rules box: opened and closed here, and remembered, so a repaint
+    // on a roster change leaves it the way the pilot had it
+    const sum = e.target.closest(".howto summary");
+    if (sum) {
+      e.preventDefault();
+      rulesOpen = !sum.parentElement.open;
+      sum.parentElement.open = rulesOpen;
+      return;
+    }
     const t = e.target.closest("button[data-table]");
     if (t && !t.disabled) { joinTable(t.dataset.table); return; }
     const b = e.target.closest("button[data-act]");
@@ -5183,6 +5314,7 @@
     if (a === "home") { picking = false; paintVeil(); return; }
     // leaving a table puts you back on the list, not out on the front page
     if (a === "leave") { picking = true; leaveTable(false); return; }
+    if (a.startsWith("kick:")) { kickPilot(a.slice(5)); return; }
     if (a === "lobby") { S.solo = false; backToIdle(); return; }
     if (a === "open") openRace();
     else if (a === "join") joinRace();

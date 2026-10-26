@@ -199,9 +199,9 @@ const advertised = new Map();            // id -> { name, priv, until }
 const ADVERT_FOR = 20 * 60 * 1000;
 const ADVERT_MAX = 80;
 
-function remember(id, name, priv) {
+function remember(id, name, priv, own) {
   const row = advertised.get(id) || {};
-  row.name = name; row.priv = priv;
+  row.name = name; row.priv = priv; row.own = own || row.own || "";
   row.until = Date.now() + ADVERT_FOR;
   advertised.set(id, row);
   if (advertised.size > ADVERT_MAX) {     // oldest advert makes way
@@ -227,6 +227,7 @@ function lobbyDigest() {
     if (pr.lname) {
       slot.name = String(pr.lname).slice(0, 24);
       slot.priv = pr.priv ? 1 : 0;
+      slot.own = typeof pr.lown === "string" ? pr.lown.slice(0, 40) : "";
     }
   }
   const now = Date.now();
@@ -235,11 +236,11 @@ function lobbyDigest() {
     const row = { n: slot.who.size, first: slot.first };
     if (slot.busy) row.busy = 1;
     if (slot.name) {
-      row.name = slot.name; row.priv = slot.priv;
-      remember(id, slot.name, slot.priv);          // keep advertising it
+      row.name = slot.name; row.priv = slot.priv; row.own = slot.own;
+      remember(id, slot.name, slot.priv, slot.own);          // keep advertising it
     } else {
       const kept = advertised.get(id);             // nobody is carrying it this instant
-      if (kept && kept.until > now) { row.name = kept.name; row.priv = kept.priv; }
+      if (kept && kept.until > now) { row.name = kept.name; row.priv = kept.priv; row.own = kept.own; }
     }
     lobbies[id] = row;
   }
@@ -248,7 +249,7 @@ function lobbyDigest() {
     if (lobbies[id]) continue;
     if (kept.until <= now) { advertised.delete(id); continue; }
     if (kept.priv) continue;                       // a private one is not advertised
-    lobbies[id] = { n: 0, first: "", name: kept.name, priv: 0, open: 1 };
+    lobbies[id] = { n: 0, first: "", name: kept.name, priv: 0, own: kept.own, open: 1 };
   }
   return { people: people.size, lobbies };
 }
