@@ -13,7 +13,6 @@
 <link rel="preload" as="image" href="media/90f15727b0d0564f.webp">
 <link rel="preload" as="image" href="media/bb34a8087df72dda.webp">
 <link rel="preload" as="image" href="media/dfa7e1c03b2f5a86.webp">
-<link rel="preload" as="image" href="media/e9451a533334d6b4.webp">
 <link rel="preload" as="image" href="media/ebb8a277ea54587c.webp">
 </head>
 <body>
@@ -110,6 +109,7 @@
     position: absolute;
     top: 26px;
     left: 12px;
+    contain: layout style;    /* its text changes every frame; nothing outside it need be laid out again */
     pointer-events: none;
     font-family: var(--display);
     line-height: .86;
@@ -1673,9 +1673,6 @@
   const ART_AZURE = "media/8167f2f286e2981f.webp";
   /* The meadow's grass: a seamless vector texture, rendered to 512px and
      laid 256 units to the tile, so it stays sharp on a two-times screen. */
-  /* The meadow's tree: a vector drawing rendered to 320px with transparency,
-     shown about 144 units wide and mirrored for every other one. */
-  const ART_TREE = "media/e9451a533334d6b4.webp";
   const ART_GRASS = "media/712bb59a01f8abd4.webp";
   const ART_MCSWORD = "media/6fb4964a1767c71f.webp";
   const ART_KAMISH = "media/dfa7e1c03b2f5a86.webp";
@@ -1756,11 +1753,19 @@
     const base = c.globalAlpha;
     c.save();
     c.lineCap = "round"; c.lineJoin = "round";
-    c.shadowColor = colorAt(1); c.shadowBlur = 16;
-    c.strokeStyle = colorAt(1); c.lineWidth = width * 0.7; c.globalAlpha = base * 0.45;
+    c.strokeStyle = colorAt(1);
     c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < pts.length; i++) c.lineTo(pts[i][0], pts[i][1]);
-    c.stroke();
+    if (GLOW) {
+      c.shadowColor = colorAt(1); c.shadowBlur = 16;
+    } else {
+      // the glow built up from strokes, widest and faintest first, so it falls off softly
+      c.lineWidth = width * 2.6; c.globalAlpha = base * 0.05; c.stroke();
+      c.lineWidth = width * 2.0; c.globalAlpha = base * 0.06; c.stroke();
+      c.lineWidth = width * 1.5; c.globalAlpha = base * 0.08; c.stroke();
+      c.lineWidth = width * 1.1; c.globalAlpha = base * 0.10; c.stroke();
+    }
+    c.lineWidth = width * 0.7; c.globalAlpha = base * 0.45; c.stroke();
     c.shadowBlur = 0;
     const n = pts.length;
     for (let i = 1; i < n; i++) {
@@ -1853,9 +1858,8 @@
     } },
     { id: "glow", name: "Glow", cost: 400, draw(c, x, y, col) {
       c.save();
-      c.shadowColor = col; c.shadowBlur = 18;
+      halo(c, x, y, col, 19);
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill();
-      c.shadowBlur = 0;
       c.fillStyle = "rgba(255,255,255,.85)";
       c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
       c.restore();
@@ -1863,20 +1867,18 @@
     { id: "spectrum", name: "Spectrum", cost: 1300, draw(c, x, y, col, now) {
       const hc = "hsl(" + ((now / 7) % 360) + " 95% 62%)";
       c.save();
-      c.shadowColor = hc; c.shadowBlur = 20;
+      halo(c, x, y, hc, 21);
       c.fillStyle = hc; c.beginPath(); c.arc(x, y, 7.5, 0, TAU); c.fill();
-      c.shadowBlur = 0;
       c.fillStyle = "rgba(255,255,255,.9)";
       c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
       c.restore();
     } },
     { id: "bullion", name: "Bullion", cost: 1700, draw(c, x, y, col, now) {
       c.save();
-      c.shadowColor = "#ffcf5c"; c.shadowBlur = 22;
+      halo(c, x, y, "#ffcf5c", 23);
       const g = c.createRadialGradient(x - 2.5, y - 2.5, 0.5, x, y, 8.5);
       g.addColorStop(0, "#fff8d8"); g.addColorStop(.5, "#ffc33d"); g.addColorStop(1, "#b8780f");
       c.fillStyle = g; c.beginPath(); c.arc(x, y, 8, 0, TAU); c.fill();
-      c.shadowBlur = 0;
       for (let i = 0; i < 3; i++) {
         const t = now / 380 + i * TAU / 3;
         const r = 13 + 2 * Math.sin(now / 200 + i);
@@ -1925,7 +1927,8 @@
         c.closePath();
         c.fillStyle = fill; c.fill();
       };
-      c.shadowColor = "#ff8a1f"; c.shadowBlur = 16;
+      if (GLOW) { c.shadowColor = "#ff8a1f"; c.shadowBlur = 16; }
+      else tongue(0, 36, 9, 4.2, "rgba(255,138,31,.22)");   // the heat round the plume, unblurred
       tongue(-5, 24, 4.5, 0, withA(col, .55));
       tongue(5, 22, 4.5, 2.1, withA(col, .55));
       tongue(0, 30, 5, 4.2, "#ff8a1f");
@@ -1968,6 +1971,18 @@
     } }
   ];
   const skinById = id => SKINS.find(s => s.id === id) || SKINS[0];
+  /* What the glowing heads had as a canvas shadow, which is blurred in
+     software every frame: three soft discs instead, the same look and no
+     blur pass at all. Stays with the colour given, however it is written. */
+  function halo(c, x, y, col, r) {
+    if (GLOW) { c.shadowColor = col; c.shadowBlur = r; return; }   // cleared by the caller's restore
+    const a = c.globalAlpha;
+    c.fillStyle = col;
+    c.globalAlpha = a * .10; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+    c.globalAlpha = a * .16; c.beginPath(); c.arc(x, y, r * .7, 0, TAU); c.fill();
+    c.globalAlpha = a * .26; c.beginPath(); c.arc(x, y, r * .45, 0, TAU); c.fill();
+    c.globalAlpha = a;
+  }
 
   /* Tails are picked separately and combine with any head. Each one draws a
      streak behind the cursor and leaves particles in the channel, which stay
@@ -2169,27 +2184,6 @@
 
   const PROPS = {
     meadow: [
-      function tree(c, x, y, r) {
-        const pic = art(ART_TREE).still;
-        if (pic && pic.naturalWidth) {
-          const w = 144, h = w * pic.naturalHeight / pic.naturalWidth;  // a big tree, the width of the road
-          c.save();
-          c.translate(x, y);
-          if (r > .5) c.scale(-1, 1);                  // every other one faces the other way
-          c.drawImage(pic, -w / 2, -h + 2, w, h);     // standing on the ground, roots at y
-          c.restore();
-          return;
-        }
-        // until the picture has decoded
-        c.fillStyle = "#15300f";
-        c.fillRect(x - 1.6, y - 7, 3.2, 9);
-        for (let i = 0; i < 3; i++) {
-          c.fillStyle = i === 2 ? "#2f6a33" : "#20492451";
-          c.beginPath();
-          c.arc(x + (i - 1) * 5, y - 11 - i * 2.5, 7 - i * 1.1, 0, TAU);
-          c.fill();
-        }
-      },
       /* After Daryll Doyle's "CSS Cow" (codepen.io/darylldoyle/pen/abERKM,
          MIT), redrawn for the canvas: side on, white with black spots and a
          black outline, pink muzzle and ear linings, a mouthful of grass. The
@@ -2273,11 +2267,12 @@
       },
       function sign(c, x, y, r) {
         const hot = r > .5;
+        c.fillStyle = hot ? "rgba(255,62,165,.22)" : "rgba(0,199,253,.2)";
+        c.fillRect(x - 4, y - 23, 8, 24);                // the glow
+        c.fillRect(x - 8, y - 23, 16, 7);
         c.fillStyle = hot ? "rgba(255,62,165,.85)" : "rgba(0,199,253,.8)";
-        c.shadowColor = c.fillStyle; c.shadowBlur = 12;
         c.fillRect(x - 1.4, y - 20, 2.8, 20);
         c.fillRect(x - 5, y - 20, 10, 2.6);
-        c.shadowBlur = 0;
       },
       function mast(c, x, y, r) {
         c.strokeStyle = "rgba(120,140,190,.5)"; c.lineWidth = 1.2;
@@ -2332,8 +2327,12 @@
         const u = n * PROP_EVERY + rnd() * PROP_EVERY;
         const side = rnd() < .5 ? -1 : 1;
         let draw = kinds[Math.floor(rnd() * kinds.length)];
-        // the big ones are the exception on a stretch, not the rule
-        if (SPARSE.has(draw.name) && rnd() < .7) draw = kinds[0];
+        // the big ones are the exception on a stretch, not the rule: most of
+        // the time the first kind stands in, or nothing where there is none
+        if (SPARSE.has(draw.name) && rnd() < .7) {
+          if (kinds[0] === draw) continue;
+          draw = kinds[0];
+        }
         list.push({ u, side, out: 26 + rnd() * 90, r: rnd(), draw });
       }
     }
@@ -2442,11 +2441,16 @@
     const base = c.globalAlpha;
     c.save();
     c.lineCap = "round"; c.lineJoin = "round";
-    c.shadowColor = "#ffffff"; c.shadowBlur = 14;
-    c.strokeStyle = "rgba(255,255,255,.55)"; c.lineWidth = width * .45; c.globalAlpha = base * .35;
+    c.strokeStyle = "#ffffff";
     c.beginPath(); c.moveTo(pts[0][0], pts[0][1]);
     for (let i = 1; i < n; i++) c.lineTo(pts[i][0], pts[i][1]);
-    c.stroke();
+    if (GLOW) {
+      c.shadowColor = "#ffffff"; c.shadowBlur = 14;
+    } else {
+      c.lineWidth = width * 1.5; c.globalAlpha = base * .05; c.stroke();
+      c.lineWidth = width * 1.0; c.globalAlpha = base * .07; c.stroke();
+    }
+    c.lineWidth = width * .45; c.globalAlpha = base * .35; c.stroke();
     c.shadowBlur = 0;
     // one normal per point, from the neighbours either side
     const nx = new Array(n), ny = new Array(n);
@@ -2793,6 +2797,11 @@
      instead of teleporting it under your thumb. The finger can also be nowhere
      near the cursor, which keeps it out of its own way. */
   const TOUCH = matchMedia("(pointer: coarse)").matches;
+  /* A canvas shadow is blurred in software every frame it is drawn. On a
+     desktop GPU that is nothing; on a phone it was the stutter. So the glow
+     on heads, tails and gems is a real shadow where the pointer is a mouse
+     and a layered, unblurred one where it is a finger. */
+  const GLOW = !TOUCH;
 
   /* A finger and a pen can both leave the surface and come back down
      somewhere else. A mouse cannot - it only ever slides. Positioning the
@@ -3856,15 +3865,26 @@
         }
 
         if (flash > 0.02) {
-          // the face goes white, and throws white out past the wall with it
+          /* The face goes white, and throws white out past the wall with it.
+             The throw used to be a canvas shadow, blurred twenty-six pixels
+             wide over the whole face - and a shadow is blurred in software,
+             every frame it is asked for. Nine frames of that every one and
+             nine tenths of a second was, on a phone, a stutter on exactly
+             that rhythm. The throw is a wide soft stroke round the face now:
+             the same halo, drawn in one pass like everything else. */
           ctx.save();
-          ctx.globalAlpha = Math.min(0.62, flash * 0.7);
-          ctx.shadowColor = "#ffffff"; ctx.shadowBlur = 26;
-          ctx.fillStyle = "rgba(255,255,255,.8)";
           ctx.beginPath();
           ctx.moveTo(tl[0], tl[1]); ctx.lineTo(tr[0], tr[1]);
           ctx.lineTo(tr[0] + cx, tr[1] + cy); ctx.lineTo(bl[0], bl[1]);
-          ctx.closePath(); ctx.fill();
+          ctx.closePath();
+          ctx.lineJoin = "round";
+          ctx.strokeStyle = "#ffffff";
+          ctx.globalAlpha = Math.min(0.62, flash * 0.7) * 0.22;
+          ctx.lineWidth = 34; ctx.stroke();
+          ctx.lineWidth = 16; ctx.stroke();
+          ctx.globalAlpha = Math.min(0.62, flash * 0.7);
+          ctx.fillStyle = "rgba(255,255,255,.8)";
+          ctx.fill();
           ctx.restore();
 
           /* and the picture fails: bands torn sideways out of the face, one
@@ -3903,17 +3923,15 @@
       ctx.globalAlpha = ph;
       ctx.translate(g.x, y);
       ctx.rotate(now / 900 + g.u);
-      ctx.shadowColor = "#8ef7ea";
-      ctx.shadowBlur = 16 * ph;
-      const grad = ctx.createLinearGradient(-r, -r, r, r);
-      grad.addColorStop(0, "#d8fffa");
-      grad.addColorStop(.5, "#8ef7ea");
-      grad.addColorStop(1, "#28b6a8");
-      ctx.fillStyle = grad;
+      // the stone, lit from the top left, and nothing round it
+      ctx.fillStyle = "#28b6a8";
       ctx.beginPath();
       ctx.moveTo(0, -r); ctx.lineTo(r * .72, 0); ctx.lineTo(0, r); ctx.lineTo(-r * .72, 0);
       ctx.closePath(); ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#8ef7ea";
+      ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(r * .72, 0); ctx.lineTo(-r * .72, 0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = "#d8fffa";
+      ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(0, 0); ctx.lineTo(-r * .72, 0); ctx.closePath(); ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,.75)";
       ctx.lineWidth = 1.2;
       ctx.beginPath(); ctx.moveTo(0, -r); ctx.lineTo(-r * .72, 0); ctx.lineTo(0, r); ctx.stroke();
@@ -4087,7 +4105,10 @@
           sfx(S.taunts[S.tauntNext++].which);
         }
       }
-      $("speedTag").textContent = "flow / " + String(Math.round(speedAt(t))).padStart(3, "0") + " u/s";
+      if (now - hudSpeedAt > 100) {                  // ten times a second is plenty for a readout
+        hudSpeedAt = now;
+        $("speedTag").textContent = "flow / " + String(Math.round(speedAt(t))).padStart(3, "0") + " u/s";
+      }
       if (S.phase === "racing") {
         const why = hitTest(S.cx, S.cy, S.dist, S.world);
         if (why) die(why);
@@ -4114,7 +4135,8 @@
           S.entrants = Math.max(S.entrants, roundField().length);
         }
       }
-      distBig.textContent = Math.round(S.dist / 10);
+      const metres = Math.round(S.dist / 10);
+      if (metres !== hudMetres) { hudMetres = metres; distBig.textContent = metres; }
       if (S.phase === "watching" && !roundField().length && now - S.startAt > 2500) {
         if (S.round && S.round.host === S.me) S.clearAt = Date.now();
         backToIdle();
@@ -4163,7 +4185,10 @@
     }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
   }
+  let hudSpeedAt = 0, hudMetres = -1;            // the readout, last written
+  let lastFrameAt = 0;
   function frame(now) {
+    lastFrameAt = now;
     step(now);
     draw(now);
     animateAppCursor(now);
@@ -4172,7 +4197,11 @@
     if (demoBg()) drawZoom(now); else clearZoom();
     requestAnimationFrame(frame);
   }
-  setInterval(() => step(performance.now()), 250);
+  /* Keeps the race ticking in a tab the browser has stopped drawing. While
+     frames are coming it stays out of the way: a step between two frames,
+     from a clock a few milliseconds ahead of the next frame's, is work done
+     twice and, now and then, a scroll that eases back by a pixel. */
+  setInterval(() => { if (performance.now() - lastFrameAt > 120) step(performance.now()); }, 250);
 
   /* ---------- the lobby is the game, running ----------
      Idle at the picker, the channel keeps scrolling behind the veil with a few
