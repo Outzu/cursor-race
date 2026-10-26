@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Cursor Clash</title>
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}#account{position:fixed;left:max(14px,env(safe-area-inset-left,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;border-radius:999px;background:#0c1324;box-shadow:inset 0 0 0 1px #27375a;font:12px "Azeret Mono",ui-monospace,monospace;color:#8b99bb}body.focus #account,body.settings #account{display:none}#account.inline{position:static;margin:2px auto 0}#account img{width:22px;height:22px;border-radius:50%;display:block}#account .dot{width:9px;height:9px;border-radius:50%;background:#4d5c80;margin-left:4px}#account .nm{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef2fb}#account .nm.guest{color:#8b99bb}#account .act{color:#3fe0cf;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:10px;padding:4px 9px;border-radius:999px;box-shadow:inset 0 0 0 1px #27375a}#account .act:hover{background:rgba(63,224,207,.12)}#account .act.primary{display:inline-flex;align-items:center;gap:10px;font-size:12px;padding:12px 18px;line-height:1}#account .gicon{width:20px;height:20px;display:block}@media (max-width:560px){#account{gap:7px;padding:5px 7px 5px 5px;max-width:calc(100vw - 24px)}#account.inline{width:100%;justify-content:center}#account .nm.guest{display:none}#account:has(.act.primary){background:none;box-shadow:none;padding:0}#account .act.primary{font-size:11px;padding:12px 14px;gap:8px}}#signin-failed{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;font:12px "Azeret Mono",ui-monospace,monospace}</style>
-<link rel="preload" as="image" href="media/489176f43685fb4b.webp">
+<link rel="preload" as="image" href="media/6ec9cb93766c7866.webp">
 <link rel="preload" as="image" href="media/70b5cd2a760aa42b.png">
 <link rel="preload" as="image" href="media/712bb59a01f8abd4.webp">
 <link rel="preload" as="image" href="media/90f15727b0d0564f.webp">
@@ -226,6 +226,20 @@
     pointer-events: none;
   }
   body.hideveil .veil { display: none; }
+
+  /* ---- the board on the front page, desktop only (homeBoard, in the script) ---- */
+  #homeboard { display: none; }
+  @media (min-width: 1280px) and (min-height: 600px) and (pointer: fine) {
+    body.homeboard #homeboard {
+      display: block; position: fixed; z-index: 21;
+      left: 0; top: 0; bottom: 0;
+      width: min(46vw, calc(50vw - 190px));
+      pointer-events: none;
+    }
+  }
+  #homeboard canvas { display: block; width: 100%; height: 100%; }
+  #homeboard a { position: absolute; display: block; pointer-events: auto; }
+  #homeboard a:not([href]) { cursor: default; }
 
   /* the tail follows the pointer across the whole interface, not just the race */
   #fx { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
@@ -1177,6 +1191,7 @@
 </div>
 
 <div class="veil" id="veil"></div>
+<div id="homeboard"><a id="hbLink" target="_blank" rel="noopener" aria-label="Open the advertiser's site"></a></div>
 <canvas id="zoom"></canvas>
 <div id="ladderHud" hidden></div>
 <button id="ladderBtn" hidden aria-pressed="false" title="Leaderboard">
@@ -1662,29 +1677,60 @@
     licenceUrl: "https://opensource.org/licenses/MIT",
     source: "https://codepen.io/darylldoyle/pen/abERKM",
     note: "Redrawn for the canvas from the CSS original."
-  }, {
-    what: "Billboard (3D model)",
-    who: "DARKLORD (@DARK_2LORD2)",
-    licence: "CC BY 4.0",
-    licenceUrl: "https://creativecommons.org/licenses/by/4.0/",
-    source: "https://sketchfab.com/3d-models/billboard-800c324581684cdbaa0a074ab3f01c0c",
-    note: "Rendered once to a flat sprite; the hoardings along the channel are that picture."
   }];
   /* The game's own mark. Embedded like the cursors, so one file is the whole
      game wherever it runs. */
   const TROPHY = "media/90f15727b0d0564f.webp";
   const LOGO = "media/ebb8a277ea54587c.webp";
-  /* The hoarding itself, rendered once from a model rather than drawn with
-     rectangles. PANEL is where its face landed in the sprite, in sprite
-     pixels - found from the render, not guessed: its top and bottom edges came
-     out identical, so the face is a true parallelogram and a plain affine
-     transform lays any sponsor's logo on it. */
-  const ART_BOARD = "media/489176f43685fb4b.webp";
-  const BOARD_WH = [240, 282];
-  const PANEL = { tl: [5, 37], tr: [214, 6], bl: [17, 124] };
+  /* The hoarding itself: our own board - a 16:9 LED screen on a steel pole
+     with a catwalk under it, built from shapes in three.js (homeBoard, below,
+     is the same board live) and rendered once to this sprite with the ground
+     and the fog off, without perspective. PANEL is where the screen's corners
+     landed, in sprite pixels, read off the render rather than guessed; with no
+     perspective the screen is a true parallelogram, so a plain affine
+     transform lays any sponsor's picture on it exactly. The desk's sprite.html
+     makes a new one: __sprite(480, 564, -34, 6, 1, true), cropped to its
+     bounds and scaled to 240 wide. */
+  const ART_BOARD = "media/6ec9cb93766c7866.webp";
+  const BOARD_WH = [240, 269];
+  const PANEL = { tl: [45.1, 57.2], tr: [196.5, 46.5], bl: [45.1, 159.3] };
 
   const ART_HOMEDIRECT = "media/bb34a8087df72dda.webp";
   SPONSORS[0].art = ART_HOMEDIRECT;   // the table is declared with the boards, above
+
+  /* The boards are sold at the desk. The server hands the page what is up,
+     with the pictures from its own origin, and the page swaps the table in
+     place: the seeded picks are redone so every pilot picks the same from the
+     same list. Nothing up, or nothing to ask - the artifact has no server -
+     and the house sponsor stays. */
+  const HOUSE_SPONSORS = SPONSORS.slice();
+  let boardsSig = "";
+  async function loadBoards() {
+    try {
+      const r = await fetch("api/boards", { cache: "no-store" });
+      if (!r.ok) return;
+      const list = await r.json();
+      if (!Array.isArray(list)) return;
+      const sig = list.map(a => a.id).join(",");
+      if (sig === boardsSig) return;
+      boardsSig = sig;
+      const next = list.length
+        ? list.map(a => ({ id: String(a.id), name: String(a.name || "").slice(0, 40), what: "On the boards",
+                           url: /^https?:\/\//.test(String(a.link)) ? String(a.link) : "", art: String(a.image) }))
+        : HOUSE_SPONSORS;
+      SPONSORS.length = 0; SPONSORS.push(...next);
+      boardCache.clear();
+    } catch (e) {}
+  }
+  /* A hoarding seen in a race is a sighting; they are sent in tens of seconds,
+     once each per race, and the server adds them up for the desk. */
+  const sightings = [];
+  setInterval(() => {
+    if (!sightings.length) return;
+    const ids = sightings.splice(0);
+    fetch("api/boards/seen", { method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids }), keepalive: true }).catch(() => {});
+  }, 10000);
   /* The meadow's grass: a seamless vector texture, rendered to 512px and
      laid 256 units to the tile, so it stays sharp on a two-times screen. */
   const ART_GRASS = "media/712bb59a01f8abd4.webp";
@@ -3965,6 +4011,7 @@
       if (flip) ctx.restore();
 
       if (drew) {
+        if (!demo && S.rid && b.who && b.seenIn !== S.rid) { b.seenIn = S.rid; sightings.push(b.who.id); }
         const ax = tr[0] - tl[0], ay = tr[1] - tl[1];
         const cx = bl[0] - tl[0], cy = bl[1] - tl[1];
         const logo = b.who && b.who.art;
@@ -4274,6 +4321,7 @@
     // the pilot page needs the rail, so it is not "lobby" even when idle
     const onPilotPage = document.body.classList.contains("settings");
     document.body.classList.toggle("lobby", demoBg() && !onPilotPage);
+    homeBoard.sync();
     // sat at a lobby with nothing running: the veil is covering everything
     document.body.classList.toggle("seated",
       !!S.table && S.phase === "idle" && !onPilotPage);
@@ -4967,6 +5015,261 @@
      because a list of six of them is not what somebody arriving wants to
      read first. `picking` is which of the two the veil is showing. */
   let picking = false;
+
+  /* ---------- the board on the front page ----------
+     The board itself, in three dimensions, low on the left of the front page,
+     with what is up on the boards playing across its screen: six seconds
+     each. A plain link to the advertiser's site lies over the screen, and
+     only the screen - the frame round it is air for the glow, and clicks go
+     through it to the page. It stands still, on
+     nothing - no ground, no caption - just the board against the page. It is
+     the board the hoardings along the channel are a picture of, and the one
+     the desk at billboard.cursorclash.com shows a buyer. Desktop only - a
+     phone has neither the room beside the menu nor the battery - and three.js
+     is fetched the first time the board is wanted, so never on a phone and
+     never mid-race. It is taken down the moment the front page goes. */
+  const homeMQ = matchMedia("(min-width: 1280px) and (min-height: 600px) and (pointer: fine)");
+  const homeBoard = (() => {
+    const host = $("homeboard");
+    let THREE = null, loading = false, dead = false, stage = null, timer = 0, at = -1;
+    const wanted = () => !dead && homeMQ.matches && demoMode() && !picking && !veil.hidden &&
+      veil.dataset.screen === "lobby" && document.visibilityState === "visible" &&
+      !/\b(settings|boards|terms|focus)\b/.test(document.body.className);
+    function sync() {
+      const want = wanted();
+      document.body.classList.toggle("homeboard", want);
+      if (want && !stage && !loading) mount();
+      else if (!want && stage) unmount();
+    }
+    async function mount() {
+      loading = true;
+      try { THREE = THREE || await import("https://cdn.jsdelivr.net/npm/three@0.166.1/build/three.module.js"); }
+      catch (e) { dead = true; }           // no three.js to be had: no board, and no asking again
+      loading = false;
+      if (dead || stage || !wanted()) { sync(); return; }
+      stage = buildBoard(THREE, host, $("hbLink"));
+      if (!stage) { dead = true; sync(); return; }
+      at = -1; next(); timer = setInterval(next, 6000);
+    }
+    function unmount() { clearInterval(timer); stage.dispose(); stage = null; }
+    function next() {
+      if (!stage) return;
+      const link = $("hbLink");
+      if (!SPONSORS.length) { link.removeAttribute("href"); stage.setPicture(null); return; }
+      at = (at + 1) % SPONSORS.length;
+      const a = SPONSORS[at];
+      if (a.url) link.href = a.url; else link.removeAttribute("href");
+      stage.setPicture(a.art || null);
+    }
+    return { sync };
+  })();
+
+  /* The board, built from shapes: screen, bezel, pole, catwalk, beacon, lit
+     by its own picture. The same construction as the desk's board3d.js, less
+     the ground, from one fixed viewpoint. Pictures come through art(), so an
+     animated one plays frame by frame the way it does on the hoardings. */
+  function buildBoard(THREE, host, link) {
+    let renderer;
+    try { renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" }); }
+    catch (e) { return null; }
+    renderer.setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const el = renderer.domElement;
+    host.insertBefore(el, host.firstChild);
+
+    const SW = 16, SH = 9;                         // the screen is the picture's shape
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 400);
+    const white = new THREE.Color(1, 1, 1);
+
+    function canvasTex(w, h, paint) {
+      const c = document.createElement("canvas"); c.width = w; c.height = h;
+      paint(c.getContext("2d"), w, h);
+      const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+      return t;
+    }
+
+    // ---- light: a dim night, a cool rim, and the screen's own glow ----
+    scene.add(new THREE.AmbientLight(0x8fa6d9, 0.35));
+    const moon = new THREE.DirectionalLight(0xbfd0ff, 0.6);
+    moon.position.set(-18, 30, -12); moon.castShadow = true;
+    moon.shadow.mapSize.set(1024, 1024);
+    moon.shadow.camera.left = -30; moon.shadow.camera.right = 30; moon.shadow.camera.top = 30; moon.shadow.camera.bottom = -30;
+    scene.add(moon);
+    const rim = new THREE.DirectionalLight(0x00c7fd, 0.9); rim.position.set(20, 8, -20); scene.add(rim);
+    const spill = new THREE.PointLight(0xffffff, 0, 60, 1.6);
+    spill.position.set(0, 0, 6); scene.add(spill);
+
+    // ---- materials ----
+    const steel = new THREE.MeshStandardMaterial({ color: 0x9aa3b2, metalness: 0.85, roughness: 0.35 });
+    const dark = new THREE.MeshStandardMaterial({ color: 0x14171f, metalness: 0.6, roughness: 0.45 });
+    const grate = new THREE.MeshStandardMaterial({ color: 0x2a2f3b, metalness: 0.5, roughness: 0.7 });
+
+    // ---- the pole and the arm, behind the screen. No foot: the pole runs out of the bottom of the frame ----
+    const POLE_Z = -2.2;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.66, 22, 28), steel);
+    pole.position.set(0, 3.6, POLE_Z); pole.castShadow = true; pole.receiveShadow = true; scene.add(pole);
+    const arm = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.2, 2.4), steel);
+    arm.position.set(0, 14.2, POLE_Z / 2 - 0.3); arm.castShadow = true; scene.add(arm);
+    const spine = new THREE.Mesh(new THREE.BoxGeometry(SW - 2, 0.7, 0.7), steel);
+    spine.position.set(0, 14.2, -1.9); scene.add(spine);
+
+    // ---- the screen: bezel, face, pixel grid, glow ----
+    const screen = new THREE.Group();
+    screen.position.set(0, 14.5, 0);
+    scene.add(screen);
+    const bezel = new THREE.Mesh(new THREE.BoxGeometry(SW + 0.7, SH + 0.7, 0.9), dark);
+    bezel.position.z = -0.45; bezel.castShadow = true; bezel.receiveShadow = true; screen.add(bezel);
+    const lip = new THREE.Mesh(new THREE.BoxGeometry(SW + 0.5, SH + 0.5, 0.06),
+      new THREE.MeshStandardMaterial({ color: 0x303542, metalness: 0.7, roughness: 0.3 }));
+    lip.position.z = 0.02; screen.add(lip);
+
+    const blankTex = canvasTex(640, 360, (g, w, h) => {
+      g.fillStyle = "#0c1222"; g.fillRect(0, 0, w, h);
+      g.fillStyle = "#1b2a4d"; g.fillRect(0, 0, w, 4); g.fillRect(0, h - 4, w, 4);
+      g.fillStyle = "#8ef7ea"; g.font = "700 40px system-ui, sans-serif"; g.textAlign = "center";
+      g.fillText("YOUR AD HERE", w / 2, h / 2 - 6);
+      g.fillStyle = "#8b99bb"; g.font = "500 20px system-ui, sans-serif";
+      g.fillText("billboard.cursorclash.com", w / 2, h / 2 + 30);
+    });
+    const faceMat = new THREE.MeshBasicMaterial({ map: blankTex, toneMapped: false });
+    const face = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), faceMat);
+    face.position.z = 0.06; screen.add(face);
+
+    const grid = canvasTex(8, 8, (g) => {
+      g.clearRect(0, 0, 8, 8);
+      g.fillStyle = "rgba(0,0,0,.55)"; g.fillRect(0, 0, 8, 1); g.fillRect(0, 0, 1, 8);
+    });
+    grid.wrapS = grid.wrapT = THREE.RepeatWrapping; grid.repeat.set(320, 180);
+    grid.magFilter = THREE.NearestFilter;
+    const pixels = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH),
+      new THREE.MeshBasicMaterial({ map: grid, transparent: true, opacity: 0.35, depthWrite: false }));
+    pixels.position.z = 0.07; screen.add(pixels);
+
+    const haloTex = canvasTex(256, 256, (g, w, h) => {
+      const r = g.createRadialGradient(w / 2, h / 2, w * 0.28, w / 2, h / 2, w / 2);
+      r.addColorStop(0, "rgba(255,255,255,.55)"); r.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = r; g.fillRect(0, 0, w, h);
+    });
+    const glowMat = new THREE.MeshBasicMaterial({ map: haloTex, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false, color: 0xffffff });
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(SW * 1.4, SH * 1.7), glowMat);   // a tighter halo than the desk's: the page is right beside it
+    glow.position.z = 0.03; glow.renderOrder = -1; screen.add(glow);
+
+    // ---- the catwalk under the screen, and the aircraft light on top ----
+    const walk = new THREE.Mesh(new THREE.BoxGeometry(SW + 1.2, 0.18, 1.6), grate);
+    walk.position.set(0, 14.5 - SH / 2 - 0.9, 0.5); walk.receiveShadow = true; walk.castShadow = true; scene.add(walk);
+    const rail = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, SW + 1.2, 10), steel);
+    rail.rotation.z = Math.PI / 2; rail.position.set(0, walk.position.y + 1.0, 1.25); scene.add(rail);
+    for (let i = -4; i <= 4; i++) {
+      const post = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 1.0, 8), steel);
+      post.position.set(i * (SW + 1.2) / 8, walk.position.y + 0.5, 1.25); scene.add(post);
+    }
+    const beacon = new THREE.Mesh(new THREE.SphereGeometry(0.16, 12, 12),
+      new THREE.MeshBasicMaterial({ color: 0xff3b3b, toneMapped: false }));
+    beacon.position.set(0, 14.5 + SH / 2 + 0.6, -0.4); scene.add(beacon);
+    const beaconLight = new THREE.PointLight(0xff3b3b, 0, 8); beaconLight.position.copy(beacon.position); scene.add(beaconLight);
+
+    // ---- the picture: painted into one canvas, fitted, so a still and a frame are handled alike ----
+    const live = document.createElement("canvas"); live.width = 1280; live.height = 720;
+    const lg = live.getContext("2d");
+    const liveTex = new THREE.CanvasTexture(live); liveTex.colorSpace = THREE.SRGBColorSpace;
+    liveTex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    const avg = document.createElement("canvas"); avg.width = avg.height = 8;
+    const ag = avg.getContext("2d", { willReadFrequently: true });
+    function lightFrom(src) {
+      let r = 0.8, g = 0.85, b = 1;
+      try {
+        ag.drawImage(src, 0, 0, 8, 8);
+        const d = ag.getImageData(0, 0, 8, 8).data;
+        r = g = b = 0;
+        for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+        r /= 64 * 255; g /= 64 * 255; b /= 64 * 255;
+      } catch (e) {}
+      const c = new THREE.Color(r, g, b), lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+      spill.color.copy(c).lerp(white, 0.25); spill.intensity = 30 + 80 * lum;
+      glowMat.color.copy(c).lerp(white, 0.3); glowMat.opacity = 0.12 + 0.24 * lum;
+    }
+    function paint(src, light) {
+      lg.fillStyle = "#0c1222"; lg.fillRect(0, 0, 1280, 720);
+      const sw = src.naturalWidth || src.width, sh = src.naturalHeight || src.height;
+      const k = Math.min(1280 / sw, 720 / sh), dw = sw * k, dh = sh * k;
+      lg.drawImage(src, (1280 - dw) / 2, (720 - dh) / 2, dw, dh);
+      liveTex.needsUpdate = true;
+      if (light) lightFrom(live);
+    }
+    let pic = null, shown = null, frameI = 0, frameAt = 0;
+    function setPicture(src) {
+      pic = src ? art(src) : null; shown = null; frameI = 0; frameAt = 0;
+      if (!pic) { faceMat.map = blankTex; faceMat.needsUpdate = true; lightFrom(blankTex.image); return; }
+      faceMat.map = liveTex; faceMat.needsUpdate = true;
+      lg.fillStyle = "#0c1222"; lg.fillRect(0, 0, 1280, 720); liveTex.needsUpdate = true;
+    }
+    function tickPicture(now) {
+      if (!pic) return;
+      if (pic.frames.length > 1) {
+        if (shown !== pic.frames[frameI] || now - frameAt >= pic.durs[frameI]) {
+          if (shown) frameI = (frameI + 1) % pic.frames.length;
+          frameAt = now; shown = pic.frames[frameI];
+          paint(shown, frameI % 8 === 0);
+        }
+      } else if (pic.still && pic.still.naturalWidth && shown !== pic.still) {
+        shown = pic.still; paint(shown, true);
+      }
+    }
+    lightFrom(blankTex.image);
+
+    // ---- one viewpoint: from the side and a little above. The frame is the whole left
+    //      edge of the page; the screen sits in its upper half, large, with air round it
+    //      for the glow, and the pole runs out of the bottom ----
+    /* The frame is as tall as the page, so the screen's share of its height is
+       what sets the distance: two fifths of the height, from about a seventh
+       of the way down to a little past the middle, clear of the menu buttons
+       below it whatever the width; the pole fills the rest. The camera looks
+       below the screen - the target rides lower than the screen's middle, so
+       the screen rides higher in the frame - and a little toward the near
+       edge, which looms. */
+    const target = new THREE.Vector3(-1.0, 10.75, 0), yaw = -0.5, pitch = 0.16;
+    function size() {
+      const w = host.clientWidth, h = host.clientHeight;
+      if (!w || !h) return;
+      renderer.setSize(w, h, false);
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      const d = 41;
+      camera.position.set(target.x + d * Math.sin(yaw) * Math.cos(pitch), target.y + d * Math.sin(pitch), target.z + d * Math.cos(yaw) * Math.cos(pitch));
+      camera.lookAt(target);
+      camera.updateMatrixWorld();
+      // the link lies where the screen lands on the page
+      let x0 = w, y0 = h, x1 = 0, y1 = 0;
+      for (const [x, y] of [[-8.4, 4.9], [8.4, 4.9], [-8.4, -4.9], [8.4, -4.9]]) {
+        const q = new THREE.Vector3(x, 14.5 + y, 0).project(camera);
+        const px = (q.x + 1) / 2 * w, py = (1 - q.y) / 2 * h;
+        x0 = Math.min(x0, px); y0 = Math.min(y0, py); x1 = Math.max(x1, px); y1 = Math.max(y1, py);
+      }
+      link.style.left = x0 + "px"; link.style.top = y0 + "px";
+      link.style.width = (x1 - x0) + "px"; link.style.height = (y1 - y0) + "px";
+    }
+    const ro = new ResizeObserver(size); ro.observe(host); size();
+    renderer.setAnimationLoop(now => {
+      tickPicture(now);
+      const blink = Math.sin(now / 500) > 0.6;
+      beaconLight.intensity = blink ? 3 : 0; beacon.material.color.setHex(blink ? 0xff3b3b : 0x5a1515);
+      renderer.render(scene, camera);
+    });
+
+    return {
+      setPicture,
+      dispose() {
+        renderer.setAnimationLoop(null); ro.disconnect();
+        scene.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+        for (const t of [blankTex, liveTex, grid, haloTex]) t.dispose();
+        renderer.dispose(); el.remove();
+      }
+    };
+  }
 
   function paintVeil() {
     if (S.phase === "racing" || S.phase === "watching") { veil.hidden = true; return; }
@@ -5912,6 +6215,7 @@
     connect();
     loadProfile();
     loadRules();             // the server's tunables beat the page's defaults
+    loadBoards(); setInterval(loadBoards, 5 * 60000);   // what is on the hoardings
     setUpRegions();          // quiet where there is only one server to play on
     followLobbyLink();       // ?lobby=<code>, from somebody who shared theirs
   }

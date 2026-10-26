@@ -31,9 +31,11 @@ command -v ufw >/dev/null || { echo "ufw is not installed" >&2; exit 1; }
 # Done by number, highest first, because deleting renumbers everything below.
 clear_web_rules() {
   local nums
-  nums="$(ufw status numbered 2>/dev/null \
+  # grep finds nothing on a box with no web rules yet, and under pipefail that
+  # would end the script here, silently, with nothing opened - hence the || true
+  nums="$( { ufw status numbered 2>/dev/null \
           | grep -E '\[[ 0-9]+\].*(^|[^0-9])(80|443)/tcp' \
-          | sed -E 's/^\[[ ]*([0-9]+)\].*/\1/' | sort -rn)"
+          | sed -E 's/^\[[ ]*([0-9]+)\].*/\1/' | sort -rn; } || true)"
   for n in $nums; do
     [ "$MODE" = dry ] && { echo "  would delete rule $n"; continue; }
     yes | ufw delete "$n" >/dev/null 2>&1 || true

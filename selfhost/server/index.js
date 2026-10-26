@@ -196,6 +196,57 @@ function peerList() {
    ones. In memory, capped, and swept - this is an advert, not a record, and
    it is gone when the server restarts, which is the right lifetime for it. */
 const advertised = new Map();            // id -> { name, priv, until }
+/* The hoardings along the channel are sold at the desk (BOARDS_URL). What is
+   up is fetched from there once a minute, each picture fetched once and kept,
+   and both handed to the page from this origin - so a picture can be drawn to
+   the canvas without tainting it, and players never speak to the desk at all.
+   The sightings the page reports are added up and sent on once a minute. */
+const BOARDS_URL = String(process.env.BOARDS_URL || "").replace(/\/+$/, "");
+const BOARDS_KEY = process.env.BOARDS_KEY || "";
+let boards = [];                        // [{ id, name, link, animated }]
+const boardPics = new Map();            // id -> { buf, type }
+const sightings = new Map();            // id -> count since the last report
+async function pullBoards() {
+  try {
+    const r = await fetch(BOARDS_URL + "/v1/active", { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error("http " + r.status);
+    const list = await r.json();
+    if (!Array.isArray(list)) throw new Error("not a list");
+    const next = [];
+    for (const a of list.slice(0, 40)) {
+      if (!a || !/^[a-zA-Z0-9]{5,10}$/.test(String(a.id)) || typeof a.image !== "string") continue;
+      if (!boardPics.has(a.id)) {
+        try {
+          const pr = await fetch(a.image, { signal: AbortSignal.timeout(15000) });
+          if (!pr.ok) continue;
+          const buf = Buffer.from(await pr.arrayBuffer());
+          if (buf.length > 6 * 1024 * 1024) continue;
+          boardPics.set(a.id, { buf, type: pr.headers.get("content-type") || "image/webp" });
+        } catch (e) { continue; }
+      }
+      next.push({ id: a.id, name: String(a.name || "").slice(0, 40),
+                  link: /^https?:\/\//.test(String(a.link)) ? String(a.link).slice(0, 300) : "", animated: !!a.animated });
+    }
+    boards = next;
+    for (const id of [...boardPics.keys()]) if (!next.some(a => a.id === id)) boardPics.delete(id);
+  } catch (e) { console.warn("boards: " + e.message); }
+}
+async function reportSightings() {
+  if (!BOARDS_KEY || !sightings.size) return;
+  const counts = Object.fromEntries(sightings); sightings.clear();
+  try {
+    const r = await fetch(BOARDS_URL + "/v1/seen", { method: "POST", signal: AbortSignal.timeout(8000),
+      headers: { "content-type": "application/json", "x-billboard-key": BOARDS_KEY }, body: JSON.stringify({ counts }) });
+    if (!r.ok) throw new Error("http " + r.status);
+  } catch (e) {        // kept for the next try
+    for (const [id, n] of Object.entries(counts)) sightings.set(id, (sightings.get(id) || 0) + n);
+  }
+}
+if (BOARDS_URL) {
+  pullBoards(); setInterval(pullBoards, 60000); setInterval(reportSightings, 60000);
+  console.log("hoardings from " + BOARDS_URL + (BOARDS_KEY ? "" : " (no BOARDS_KEY: sightings are not reported)"));
+}
+
 const ADVERT_FOR = 20 * 60 * 1000;
 const ADVERT_MAX = 80;
 
@@ -774,6 +825,33 @@ const server = http.createServer((req, res) => {
      changing ENTRY_FEE or TABLE_CAP in the env file is enough - without this a
      server quietly allowing 13 to a table still shows 10 on every card, and
      refuses the eleventh pilot from the page before the server ever sees them. */
+  if (url.pathname === "/api/boards") {
+    res.writeHead(200, { "content-type": MIME[".json"], "cache-control": "public, max-age=60" });
+    res.end(JSON.stringify(boards.map(a => ({ id: a.id, name: a.name, link: a.link, animated: a.animated, image: "/api/boards/img/" + a.id + ".webp" }))));
+    return;
+  }
+  const boardPic = /^\/api\/boards\/img\/([a-zA-Z0-9]+)\.webp$/.exec(url.pathname);
+  if (boardPic) {
+    const pic = boardPics.get(boardPic[1]);
+    if (!pic) { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { "content-type": pic.type, "content-length": pic.buf.length, "cache-control": "public, max-age=3600" });
+    res.end(pic.buf);
+    return;
+  }
+  if (url.pathname === "/api/boards/seen" && req.method === "POST") {
+    let body = "";
+    req.on("data", d => { body += d; if (body.length > 4096) req.destroy(); });
+    req.on("end", () => {
+      try {
+        const ids = JSON.parse(body).ids;
+        for (const id of (Array.isArray(ids) ? ids.slice(0, 50) : []))
+          if (boards.some(a => a.id === id)) sightings.set(id, (sightings.get(id) || 0) + 1);
+      } catch (e) {}
+      res.writeHead(204); res.end();
+    });
+    return;
+  }
+
   if (url.pathname === "/api/rules") {
     res.writeHead(200, {
       "content-type": MIME[".json"],
