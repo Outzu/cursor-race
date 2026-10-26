@@ -8,10 +8,12 @@
 <link rel="preload" as="image" href="media/489176f43685fb4b.webp">
 <link rel="preload" as="image" href="media/6fb4964a1767c71f.webp">
 <link rel="preload" as="image" href="media/70b5cd2a760aa42b.png">
+<link rel="preload" as="image" href="media/712bb59a01f8abd4.webp">
 <link rel="preload" as="image" href="media/8167f2f286e2981f.webp">
 <link rel="preload" as="image" href="media/90f15727b0d0564f.webp">
 <link rel="preload" as="image" href="media/bb34a8087df72dda.webp">
 <link rel="preload" as="image" href="media/dfa7e1c03b2f5a86.webp">
+<link rel="preload" as="image" href="media/e9451a533334d6b4.webp">
 <link rel="preload" as="image" href="media/ebb8a277ea54587c.webp">
 </head>
 <body>
@@ -1619,6 +1621,13 @@
   /* Artwork that is not ours, and the terms it comes under. The terms screen
      reads this, so crediting cannot drift out of step with what is shipped. */
   const ART_CREDITS = [{
+    what: "The meadow's cows",
+    who: "after Daryll Doyle's \"CSS Cow\"",
+    licence: "MIT",
+    licenceUrl: "https://opensource.org/licenses/MIT",
+    source: "https://codepen.io/darylldoyle/pen/abERKM",
+    note: "Redrawn for the canvas from the CSS original."
+  }, {
     what: "Kamish's Wrath (Busy)",
     who: "Cursors-4U.com",
     licence: "CC BY-NC 4.0",
@@ -1662,6 +1671,12 @@
   const ART_HOMEDIRECT = "media/bb34a8087df72dda.webp";
   SPONSORS[0].art = ART_HOMEDIRECT;   // the table is declared with the boards, above
   const ART_AZURE = "media/8167f2f286e2981f.webp";
+  /* The meadow's grass: a seamless vector texture, rendered to 512px and
+     laid 256 units to the tile, so it stays sharp on a two-times screen. */
+  /* The meadow's tree: a vector drawing rendered to 320px with transparency,
+     shown about 144 units wide and mirrored for every other one. */
+  const ART_TREE = "media/e9451a533334d6b4.webp";
+  const ART_GRASS = "media/712bb59a01f8abd4.webp";
   const ART_MCSWORD = "media/6fb4964a1767c71f.webp";
   const ART_KAMISH = "media/dfa7e1c03b2f5a86.webp";
 
@@ -2078,19 +2093,9 @@
       g.stroke();
     } },
 
-    { id: "meadow", name: "Meadow", cost: 300, floor: "#0e2213", paint(g, n) {
-      g.fillStyle = "#1b3d22"; g.fillRect(0, 0, n, n);
-      sprinkle(g, "meadow-dark", 104, (c, x, y, a) => {
-        c.fillStyle = "rgba(14,38,19,.7)";
-        c.beginPath(); c.ellipse(x, y, 5 + a * 7, 3 + a * 4, a * 3, 0, TAU); c.fill();
-      });
-      sprinkle(g, "meadow-blade", 360, (c, x, y, a, b) => {
-        c.strokeStyle = a > .7 ? "#3a7a42" : "#2a5c31";
-        c.lineWidth = 1.2;
-        c.beginPath(); c.moveTo(x, y);
-        c.quadraticCurveTo(x + (b - .5) * 5, y - 4 - a * 4, x + (b - .5) * 9, y - 7 - a * 6);
-        c.stroke();
-      });
+    { id: "meadow", name: "Meadow", cost: 300, floor: "#0e2213", image: ART_GRASS, tile: 256, paint(g, n) {
+      // until the picture has decoded - a frame or two, once
+      g.fillStyle = "#3f8f1f"; g.fillRect(0, 0, n, n);
     } },
 
     { id: "atlas", name: "Atlas", cost: 800, floor: "#141c2e", paint(g, n) {
@@ -2157,12 +2162,25 @@
      They stand clear of the wall, and they are drawn before the channel is,
      so one that strays never covers the part you are flying through. */
   const PROP_EVERY = 520;
-  const PROP_SCALE = 1.8;                   // they were drawn small; this is what you see them at
+  const PROP_SCALE = 1.8;
+  const SPARSE = new Set(["cow"]);          // drawn large, so placed seldom
+  const SPARSE_GROUNDS = new Set(["meadow"]);   // whose scenery is big, so there is less of it                   // they were drawn small; this is what you see them at
   const propCache = new Map();
 
   const PROPS = {
     meadow: [
       function tree(c, x, y, r) {
+        const pic = art(ART_TREE).still;
+        if (pic && pic.naturalWidth) {
+          const w = 144, h = w * pic.naturalHeight / pic.naturalWidth;  // a big tree, the width of the road
+          c.save();
+          c.translate(x, y);
+          if (r > .5) c.scale(-1, 1);                  // every other one faces the other way
+          c.drawImage(pic, -w / 2, -h + 2, w, h);     // standing on the ground, roots at y
+          c.restore();
+          return;
+        }
+        // until the picture has decoded
         c.fillStyle = "#15300f";
         c.fillRect(x - 1.6, y - 7, 3.2, 9);
         for (let i = 0; i < 3; i++) {
@@ -2172,14 +2190,55 @@
           c.fill();
         }
       },
+      /* After Daryll Doyle's "CSS Cow" (codepen.io/darylldoyle/pen/abERKM,
+         MIT), redrawn for the canvas: side on, white with black spots and a
+         black outline, pink muzzle and ear linings, a mouthful of grass. The
+         spots are seeded so no two cows wear the same ones, and about half
+         face the other way. ART_CREDITS carries the credit. */
       function cow(c, x, y, r) {
-        c.fillStyle = "#d8d8cf";
-        c.beginPath(); c.ellipse(x, y - 5, 8, 4.6, 0, 0, TAU); c.fill();
-        c.fillStyle = "#2b2b2b";
-        c.beginPath(); c.ellipse(x - 3, y - 6, 2.6, 2, .5, 0, TAU); c.fill();
-        c.beginPath(); c.ellipse(x + 3.4, y - 4, 2, 1.6, 0, 0, TAU); c.fill();
-        c.fillRect(x - 6, y - 2, 1.6, 4); c.fillRect(x + 4.4, y - 2, 1.6, 4);
-        c.beginPath(); c.arc(x + 8, y - 7, 2.6, 0, TAU); c.fill();
+        const rnd = mulberry32(Math.floor(r * 1e9));
+        c.save(); c.translate(x, y); c.scale(r > .5 ? -2 : 2, 2);   // twice the size of the rest
+        c.lineWidth = .7; c.strokeStyle = "#111"; c.lineJoin = "round";
+        // the legs, hooves black
+        for (const lx of [-6.5, -4, 3, 5.5]) {
+          c.fillStyle = "#fff"; c.fillRect(lx - .9, -4, 1.8, 7.5); c.strokeRect(lx - .9, -4, 1.8, 7.5);
+          c.fillStyle = "#111"; c.fillRect(lx - 1.1, 2.6, 2.2, .9);
+        }
+        // the tail, with a black tuft
+        c.beginPath(); c.moveTo(-8, -8); c.quadraticCurveTo(-11, -6.5, -10.5, -3); c.stroke();
+        c.fillStyle = "#111"; c.beginPath(); c.arc(-10.5, -2.6, .9, 0, TAU); c.fill();
+        // the body, and its spots clipped inside it
+        c.fillStyle = "#fff";
+        c.beginPath(); c.ellipse(0, -6.5, 8.6, 4.6, 0, 0, TAU); c.fill(); c.stroke();
+        c.save(); c.clip();
+        c.fillStyle = "#111";
+        for (let i = 0; i < 5; i++) {
+          c.beginPath();
+          c.ellipse(-7 + rnd() * 13, -10 + rnd() * 7, 1.2 + rnd() * 1.6, .9 + rnd() * 1.2, rnd() * 3, 0, TAU);
+          c.fill();
+        }
+        c.restore();
+        // the head: ears, face, eyes, muzzle, nostrils
+        for (const ex of [6.4, 10.8]) {
+          c.fillStyle = "#fff"; c.beginPath(); c.ellipse(ex, -10.4, 1.4, .9, ex < 8 ? -.5 : .5, 0, TAU); c.fill(); c.stroke();
+          c.fillStyle = "#ffa9aa"; c.beginPath(); c.ellipse(ex, -10.4, .8, .45, ex < 8 ? -.5 : .5, 0, TAU); c.fill();
+        }
+        c.fillStyle = "#fff"; c.beginPath(); c.ellipse(8.6, -7.6, 3.4, 3, 0, 0, TAU); c.fill(); c.stroke();
+        c.fillStyle = "#111";
+        c.beginPath(); c.arc(7.5, -8.3, .45, 0, TAU); c.fill();
+        c.beginPath(); c.arc(9.7, -8.3, .45, 0, TAU); c.fill();
+        c.fillStyle = "#ffa9aa"; c.beginPath(); c.ellipse(9.2, -5.4, 3.1, 1.9, 0, 0, TAU); c.fill(); c.stroke();
+        c.fillStyle = "#111";
+        c.beginPath(); c.arc(8.3, -5.5, .38, 0, TAU); c.fill();
+        c.beginPath(); c.arc(10.1, -5.5, .38, 0, TAU); c.fill();
+        // a mouthful of grass
+        c.strokeStyle = "#3fbf3f"; c.lineWidth = .8;
+        c.beginPath();
+        c.moveTo(8.6, -3.6); c.lineTo(7.4, -1.6);
+        c.moveTo(9.2, -3.5); c.lineTo(9.4, -1.2);
+        c.moveTo(9.8, -3.6); c.lineTo(11.2, -1.8);
+        c.stroke();
+        c.restore();
       }
     ],
     atlas: [
@@ -2265,12 +2324,17 @@
     const rnd = mulberry32(hashStr(key));
     list = [];
     if (kinds) {
-      const many = 2 + (rnd() < .5 ? 1 : 0);          // two or three a stretch
+      /* Two or three a stretch, except where they are big: the meadow's
+         trees and cows are drawn the size of the road, so a stretch has one
+         of them or, often as not, none. */
+      const many = SPARSE_GROUNDS.has(kind) ? (rnd() < .45 ? 0 : 1) : 2 + (rnd() < .5 ? 1 : 0);
       for (let i = 0; i < many; i++) {
         const u = n * PROP_EVERY + rnd() * PROP_EVERY;
         const side = rnd() < .5 ? -1 : 1;
-        list.push({ u, side, out: 26 + rnd() * 90, r: rnd(),
-                    draw: kinds[Math.floor(rnd() * kinds.length)] });
+        let draw = kinds[Math.floor(rnd() * kinds.length)];
+        // the big ones are the exception on a stretch, not the rule
+        if (SPARSE.has(draw.name) && rnd() < .7) draw = kinds[0];
+        list.push({ u, side, out: 26 + rnd() * 90, r: rnd(), draw });
       }
     }
     if (propCache.size > 90) propCache.clear();
@@ -2294,31 +2358,51 @@
      is changed; a tile's worth of slide never reaches its ends. */
   let groundStrip = null, groundStripKey = "";
   function groundStripFor(x0, y0, x1, y1) {
-    const w = Math.ceil((x1 - x0) * scale), h = Math.ceil((y1 - y0 + TILE * 2) * scale);
-    const key = S.ground + "|" + w + "|" + h + "|" + scale.toFixed(4);
+    const it = groundById(S.ground), T = groundTile(it);
+    const w = Math.ceil((x1 - x0) * scale), h = Math.ceil((y1 - y0 + T * 2) * scale);
+    let pat = groundPattern();
+    // a picture still decoding: the drawn stand-in, and not kept, so the
+    // picture takes over the moment it is there
+    const key = S.ground + "|" + w + "|" + h + "|" + scale.toFixed(4) + (pat ? "" : "|standin");
     if (groundStrip && groundStripKey === key) return groundStrip;
     groundStripKey = key;
+    if (!pat && it.image) pat = ctx.createPattern(tile(it.paint), "repeat");
     const c = groundStrip || document.createElement("canvas");
     c.width = w; c.height = h;
     const g = c.getContext("2d");
     g.setTransform(scale, 0, 0, scale, 0, 0);
-    g.fillStyle = groundPattern() || hatch || "#18233b";
-    g.fillRect(0, 0, x1 - x0, y1 - y0 + TILE * 2);
+    g.fillStyle = pat || hatch || "#18233b";
+    g.fillRect(0, 0, x1 - x0, y1 - y0 + T * 2);
     groundStrip = c;
     return c;
   }
 
-  /* built the first time it is asked for, then kept */
+  /* How far a ground's tile repeats, in channel units. The drawn ones are
+     one TILE; a picture says how big it wants to be, and is scaled to it. */
+  const groundTile = it => it.tile || TILE;
+
+  /* built the first time it is asked for, then kept. A picture is not a
+     pattern until it has decoded, so until then this says so, the drawn
+     stand-in is used, and the ground strip is not kept. */
   const groundPats = new Map();
-  function groundPattern() {
-    const it = groundById(S.ground);
+  function patternFor(it, c) {
     let pat = groundPats.get(it.id);
-    if (!pat) {
-      pat = ctx.createPattern(tile(it.paint), "repeat");
-      groundPats.set(it.id, pat);
+    if (pat) return pat;
+    if (it.image) {
+      const pic = art(it.image).still;
+      if (!pic || !pic.naturalWidth) return null;
+      pat = c.createPattern(pic, "repeat");
+      if (pat.setTransform && window.DOMMatrix) {
+        const k = groundTile(it) / pic.naturalWidth;
+        pat.setTransform(new DOMMatrix([k, 0, 0, k, 0, 0]));
+      }
+    } else {
+      pat = c.createPattern(tile(it.paint), "repeat");
     }
+    groundPats.set(it.id, pat);
     return pat;
   }
+  function groundPattern() { return patternFor(groundById(S.ground), ctx); }
   const byKind = kind => kind === "skins" ? skinById : kind === "tails" ? tailById : groundById;
   /* free items are everyone's; the rest are bought and remembered */
   const owns = (item, kind) => !!item && (item.cost === 0 || S.owned[kind].has(item.id));
@@ -3587,27 +3671,13 @@
        So the ground is painted once into a strip two tiles taller than the
        view, and each frame that strip is copied into place shifted by a
        whole number of device pixels: one blit, nothing to filter. */
-    const slide = ((dist % TILE) + TILE) % TILE;
+    const T = groundTile(groundById(S.ground));
+    const slide = ((dist % T) + T) % T;
     const strip = groundStripFor(x0, y0, x1, y1);
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.drawImage(strip, Math.round(offX + x0 * scale), Math.round(offY + (y0 - TILE + slide) * scale));
+    ctx.drawImage(strip, Math.round(offX + x0 * scale), Math.round(offY + (y0 - T + slide) * scale));
     ctx.restore();
-
-    // whatever is standing about on this particular ground
-    const scenery = PROPS[S.ground];
-    if (scenery) {
-      for (const t of propsNear(uMin, uMax, wd, S.ground)) {
-        const y = H - (t.u - dist);
-        const x = centerX(t.u, wd) + t.side * (halfW(t.u) + t.out);
-        if (x < x0 - 40 || x > x1 + 40) continue;
-        ctx.save();
-        ctx.translate(x, y);
-        ctx.scale(PROP_SCALE, PROP_SCALE);         // drawn at unit size, shown larger
-        t.draw(ctx, 0, 0, t.r);
-        ctx.restore();
-      }
-    }
 
     const step = 8;
     wallRoom(Math.ceil((y1 - y0) / step) + 4);
@@ -3707,6 +3777,25 @@
       ctx.strokeStyle = "#00c7fd"; ctx.lineWidth = 2; ctx.stroke();
     };
     edge(wallLX); edge(wallRX);
+
+    /* Whatever is standing about on this particular ground. After the
+       channel and its edges, not before: these are placed clear of the wall,
+       but the big ones - a cow, a tree - reach past that, and a head or a
+       tail under the road looked sunk into it. Standing on the road is what
+       something at the roadside does. */
+    const scenery = PROPS[S.ground];
+    if (scenery) {
+      for (const t of propsNear(uMin, uMax, wd, S.ground)) {
+        const y = H - (t.u - dist);
+        const x = centerX(t.u, wd) + t.side * (halfW(t.u) + t.out);
+        if (x < x0 - 120 || x > x1 + 120) continue;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(PROP_SCALE, PROP_SCALE);         // drawn at unit size, shown larger
+        t.draw(ctx, 0, 0, t.r);
+        ctx.restore();
+      }
+    }
 
     /* After the edges, not before: a hoarding stands out past the wall
        and nearer the eye than the channel is, so where the two cross it
@@ -5432,9 +5521,8 @@
       if (p.item.paint) {                     // a ground: itself, with channel over it
         c.restore();
         c.setTransform(1, 0, 0, 1, 0, 0);
-        const pat = groundPats.get(p.item.id) ||
-          groundPats.set(p.item.id, c.createPattern(tile(p.item.paint), "repeat")).get(p.item.id);
-        c.fillStyle = pat; c.fillRect(0, 0, p.c.width, p.c.height);
+        const pat = patternFor(p.item, c);
+        c.fillStyle = pat || "#3f8f1f"; c.fillRect(0, 0, p.c.width, p.c.height);
         c.fillStyle = p.item.floor;
         c.beginPath();
         c.moveTo(38, 0); c.bezierCurveTo(10, 45, 126, 91, 98, 136);
