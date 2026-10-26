@@ -6,13 +6,10 @@
 <title>Cursor Clash</title>
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}#account{position:fixed;left:max(14px,env(safe-area-inset-left,0px));bottom:max(14px,env(safe-area-inset-bottom,0px));z-index:70;display:flex;align-items:center;gap:9px;padding:7px 9px 7px 7px;border-radius:999px;background:#0c1324;box-shadow:inset 0 0 0 1px #27375a;font:12px "Azeret Mono",ui-monospace,monospace;color:#8b99bb}body.focus #account,body.settings #account{display:none}#account.inline{position:static;margin:2px auto 0}#account img{width:22px;height:22px;border-radius:50%;display:block}#account .dot{width:9px;height:9px;border-radius:50%;background:#4d5c80;margin-left:4px}#account .nm{max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#eef2fb}#account .nm.guest{color:#8b99bb}#account .act{color:#3fe0cf;text-decoration:none;letter-spacing:.08em;text-transform:uppercase;font-size:10px;padding:4px 9px;border-radius:999px;box-shadow:inset 0 0 0 1px #27375a}#account .act:hover{background:rgba(63,224,207,.12)}#account .act.primary{display:inline-flex;align-items:center;gap:10px;font-size:12px;padding:12px 18px;line-height:1}#account .gicon{width:20px;height:20px;display:block}@media (max-width:560px){#account{gap:7px;padding:5px 7px 5px 5px;max-width:calc(100vw - 24px)}#account.inline{width:100%;justify-content:center}#account .nm.guest{display:none}#account:has(.act.primary){background:none;box-shadow:none;padding:0}#account .act.primary{font-size:11px;padding:12px 14px;gap:8px}}#signin-failed{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:80;background:#1b2740;color:#ff5470;padding:10px 16px;border-radius:4px;font:12px "Azeret Mono",ui-monospace,monospace}</style>
 <link rel="preload" as="image" href="media/489176f43685fb4b.webp">
-<link rel="preload" as="image" href="media/6fb4964a1767c71f.webp">
 <link rel="preload" as="image" href="media/70b5cd2a760aa42b.png">
 <link rel="preload" as="image" href="media/712bb59a01f8abd4.webp">
-<link rel="preload" as="image" href="media/8167f2f286e2981f.webp">
 <link rel="preload" as="image" href="media/90f15727b0d0564f.webp">
 <link rel="preload" as="image" href="media/bb34a8087df72dda.webp">
-<link rel="preload" as="image" href="media/dfa7e1c03b2f5a86.webp">
 <link rel="preload" as="image" href="media/ebb8a277ea54587c.webp">
 </head>
 <body>
@@ -1666,32 +1663,12 @@
     source: "https://codepen.io/darylldoyle/pen/abERKM",
     note: "Redrawn for the canvas from the CSS original."
   }, {
-    what: "Kamish's Wrath (Busy)",
-    who: "Cursors-4U.com",
-    licence: "CC BY-NC 4.0",
-    licenceUrl: "https://creativecommons.org/licenses/by-nc/4.0/",
-    source: "https://www.cursors-4u.com/cursor/kamishs-wrath-solo-leveling-busy",
-    note: "Depicts Kamish from Solo Leveling, whose rights rest with its creators."
-  }, {
-    what: "Azure Aura (Working)",
-    who: "Cursors-4U.com",
-    licence: "CC BY-NC 4.0",
-    licenceUrl: "https://creativecommons.org/licenses/by-nc/4.0/",
-    source: "https://www.cursors-4u.com/cursor/azure-aura-working"
-  }, {
     what: "Billboard (3D model)",
     who: "DARKLORD (@DARK_2LORD2)",
     licence: "CC BY 4.0",
     licenceUrl: "https://creativecommons.org/licenses/by/4.0/",
     source: "https://sketchfab.com/3d-models/billboard-800c324581684cdbaa0a074ab3f01c0c",
     note: "Rendered once to a flat sprite; the hoardings along the channel are that picture."
-  }, {
-    what: "Minecraft Sword",
-    who: "nhatnamlt, via Cursors-4U.com",
-    licence: "CC0 1.0 (public domain)",
-    licenceUrl: "https://creativecommons.org/publicdomain/zero/1.0/",
-    source: "https://www.cursors-4u.com/cursor/sword-minecraft",
-    note: "Draws on Minecraft, whose rights rest with Mojang. CC0 is the uploader's own dedication and cannot speak for them."
   }];
   /* The game's own mark. Embedded like the cursors, so one file is the whole
      game wherever it runs. */
@@ -1708,12 +1685,9 @@
 
   const ART_HOMEDIRECT = "media/bb34a8087df72dda.webp";
   SPONSORS[0].art = ART_HOMEDIRECT;   // the table is declared with the boards, above
-  const ART_AZURE = "media/8167f2f286e2981f.webp";
   /* The meadow's grass: a seamless vector texture, rendered to 512px and
      laid 256 units to the tile, so it stays sharp on a two-times screen. */
   const ART_GRASS = "media/712bb59a01f8abd4.webp";
-  const ART_MCSWORD = "media/6fb4964a1767c71f.webp";
-  const ART_KAMISH = "media/dfa7e1c03b2f5a86.webp";
 
   /* ---------- cursor designs: looks only, the hitbox is always R ---------- */
 
@@ -1925,26 +1899,68 @@
       }
       c.restore();
     } },
-    /* Kamish's Wrath, by Cursors-4U.com, under CC BY-NC 4.0. The credit it
-       asks for is on the terms screen; the licence is why this game takes no
-       money. ART_CREDITS, above, is what the terms screen prints. */
-    { id: "kamish", name: "Kamish's Wrath", cost: 2000, art: ART_KAMISH, size: 60, draw(c, x, y, col, now) {
-      if (drawArt(c, ART_KAMISH, x, y, 60, now)) return;
-      c.save();                                   // until the picture is decoded
-      c.shadowColor = "#ff4d4d"; c.shadowBlur = 14;
-      c.fillStyle = withA(col, .9);
-      c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill();
+    /* These three were pictures from elsewhere once - two under a licence
+       that forbade commerce, one drawing on somebody else's game - and are
+       drawn here now, so that nothing in the game is anybody else's. They
+       keep their ids: a pilot who bought one still has one. */
+    /* Inferno: a head of black glass with lava showing through the cracks,
+       breathing, and embers coming off it. */
+    { id: "kamish", name: "Inferno", cost: 2000, size: 46, draw(c, x, y, col, now) {
+      c.save(); c.translate(x, y);
+      halo(c, 0, 0, "#ff5a1f", 20);
+      c.beginPath(); c.moveTo(0, -16); c.lineTo(11, 8); c.lineTo(0, 3); c.lineTo(-11, 8); c.closePath();
+      c.fillStyle = "#1a1016"; c.fill();
+      c.shadowBlur = 0;
+      c.strokeStyle = "#3a1f22"; c.lineWidth = 1.2; c.stroke();
+      const glow = .6 + .4 * Math.sin(now / 220);
+      c.strokeStyle = "rgba(255," + Math.round(90 + 80 * glow) + ",31," + (0.6 + 0.4 * glow).toFixed(2) + ")";
+      c.lineWidth = 1.4; c.lineCap = "round";
+      c.beginPath();
+      c.moveTo(0, -12); c.lineTo(-2, -4); c.lineTo(1, 0); c.lineTo(-1, 4);
+      c.moveTo(3, -6); c.lineTo(6, 2);
+      c.moveTo(-4, -3); c.lineTo(-7, 4);
+      c.stroke();
+      c.fillStyle = "#ffb347";
+      for (let i = 0; i < 3; i++) {
+        const t = (now / 900 + i / 3) % 1;
+        c.globalAlpha = 1 - t;
+        c.beginPath(); c.arc(Math.sin(now / 300 + i * 2.1) * 6, 10 - t * 26, 1.6 - t, 0, TAU); c.fill();
+      }
       c.restore();
     } },
-    { id: "azure", name: "Azure Aura", cost: 2400, art: ART_AZURE, draw(c, x, y, col, now) {
-      if (drawArt(c, ART_AZURE, x, y, 30, now)) return;
-      c.save(); c.shadowColor = "#4da6ff"; c.shadowBlur = 14; c.fillStyle = withA(col, .9);
-      c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill(); c.restore();
+    /* Tide: a drop of water, lit from one side, with smaller drops circling. */
+    { id: "azure", name: "Tide", cost: 2400, size: 46, draw(c, x, y, col, now) {
+      c.save(); c.translate(x, y);
+      halo(c, 0, 0, "#4da6ff", 20);
+      c.beginPath(); c.moveTo(0, -14); c.bezierCurveTo(9, -2, 9, 8, 0, 9); c.bezierCurveTo(-9, 8, -9, -2, 0, -14); c.closePath();
+      c.fillStyle = "#2b7fd6"; c.fill();
+      c.shadowBlur = 0;
+      c.strokeStyle = "#dff3ff"; c.lineWidth = 1; c.stroke();
+      c.fillStyle = "#8fd0ff"; c.beginPath(); c.ellipse(-3, -2, 2.2, 4, .4, 0, TAU); c.fill();
+      c.fillStyle = "#bfe6ff";
+      for (let i = 0; i < 5; i++) {
+        const a = now / 700 + i * TAU / 5, r = 15 + 1.5 * Math.sin(now / 250 + i);
+        c.beginPath(); c.arc(Math.cos(a) * r, Math.sin(a) * r * .8, 1.6, 0, TAU); c.fill();
+      }
+      c.restore();
     } },
-    { id: "mcsword", name: "Minecraft Sword", cost: 2800, art: ART_MCSWORD, size: 64, draw(c, x, y, col, now) {
-      if (drawArt(c, ART_MCSWORD, x, y, 64, now)) return;
-      c.save(); c.shadowColor = "#b6c2d4"; c.shadowBlur = 12; c.fillStyle = withA(col, .9);
-      c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill(); c.restore();
+    /* Pixel Blade: a sword drawn a pixel at a time, point up, with a glint
+       running down the edge. Ours, not anybody's game's. */
+    { id: "mcsword", name: "Pixel Blade", cost: 2800, size: 60, draw(c, x, y, col, now) {
+      const cell = 3.5, cols = 7;
+      const rows = [
+        "...W...", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..",
+        ".GGGGG.", "GGgGgGG", "..HHH..", "..HHH..", "..HHH..", ".PPPPP.", "..PPP.."];
+      const ink = { W: "#e6f2ff", L: "#9fb6cf", G: "#e0a92a", g: "#9a6d12", H: "#4a2b14", P: "#c9c9d4" };
+      c.save(); c.translate(x - cols * cell / 2, y - rows.length * cell / 2);
+      for (let r = 0; r < rows.length; r++) for (let q = 0; q < cols; q++) {
+        const k = rows[r][q];
+        if (k === ".") continue;
+        c.fillStyle = ink[k]; c.fillRect(q * cell, r * cell, cell, cell);
+      }
+      const gl = 1 + Math.floor((now / 90) % 8);              // the glint, down the edge
+      c.fillStyle = "#ffffff"; c.fillRect(2 * cell, gl * cell, cell, cell);
+      c.restore();
     } },
     /* An arrowhead on fire. The plume behind it is three tongues of flame,
        each a curve whose tip wanders frame to frame, hot white at the root
