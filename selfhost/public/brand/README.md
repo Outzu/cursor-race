@@ -6,7 +6,6 @@ Exports the game embeds, kept here with their sources so they can be re-cut.
 
 - `logo-source.png` / `logo.webp` - the mascot mark on the home screen
 - `icon-source.png` / `favicon.png` - the tab icon
-- `homedirect.svg` / `homedirect.webp` - the HomeDirect sponsor board
 - `trophy-source.png` / `trophy.webp` - the button that opens the board on a phone
 - `board.webp` - the hoarding: our own board, built from shapes in three.js, the
   same construction as the desk's `board3d.js` (github.com/Outzu/cursorclash-billboard)

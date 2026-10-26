@@ -376,6 +376,8 @@
   .sheetwrap .credit .note { color: #6b7899; }
   .sheetwrap .close { margin-top: 28px; }
   #boards .credit img { display: block; max-width: 220px; margin: 4px 0 8px; }
+  #boards .btnrow.desk { justify-content: flex-start; margin: 6px 0 14px; }
+  a.go { display: inline-flex; align-items: center; text-decoration: none; }
   #netSig {
     position: fixed;
     right: max(14px, env(safe-area-inset-right, 0px));
@@ -1349,16 +1351,12 @@
   /* the screen row the cursor is held above-of: the near edge of the band */
   const gridHoldY = () => H - GRID_U + R;
 
-  /* Hoardings along the channel. Each one belongs to somebody, and the
-     sponsors screen is generated from this list, so a board can never be up
-     without a name against it. */
-  const SPONSORS = [{
-    id: "homedirect",
-    name: "HomeDirect",
-    what: "Real estate platform",
-    url: "https://www.homedirect.ro/",
-    art: null          // filled in below, once the artwork exists
-  }];
+  /* Hoardings along the channel. What is on them is sold at the desk,
+     billboard.cursorclash.com (loadBoards, below), and the Billboard screen
+     is generated from this list, so a board can never be up without a name
+     against it. With nothing sold, every board shows the desk's own
+     placeholder. */
+  const SPONSORS = [];
 
   /* A hoarding wants a bend to stand on: on a straight there is nowhere for it
      to be except in the way, and the player never turns their head. So one is
@@ -1377,13 +1375,13 @@
     const rnd = mulberry32(hashStr(key));
     const u = n * BOARD_EVERY + rnd() * 420;
     const bend = centerX(u + 90, wd) - centerX(u - 90, wd);
-    if (SPONSORS.length && Math.abs(bend) > 24) {
+    if (Math.abs(bend) > 24) {
       const side = centerX(u, wd) > W / 2 ? -1 : 1;     // out where the room is
       list.push({
         u, side,
         x: centerX(u, wd) + side * (halfW(u) + 30),
         w: 248, h: 96,                         // a big board: it is meant to be read at speed
-        who: SPONSORS[Math.floor(rnd() * SPONSORS.length)],
+        who: SPONSORS.length ? SPONSORS[Math.floor(rnd() * SPONSORS.length)] : null,
         phase: rnd()
       });
     }
@@ -1680,15 +1678,26 @@
   const BOARD_WH = [240, 269];
   const PANEL = { tl: [45.1, 57.2], tr: [196.5, 46.5], bl: [45.1, 159.3] };
 
-  const ART_HOMEDIRECT = "data:image/webp;base64,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";
-  SPONSORS[0].art = ART_HOMEDIRECT;   // the table is declared with the boards, above
+  /* The desk's own placeholder, for a board with nothing sold on it - the
+     words a buyer sees on the empty screen at the desk. Painted once, at
+     load, and kept as a picture like any sponsor's. */
+  const ART_BLANK = (() => {
+    const c = document.createElement("canvas"); c.width = 640; c.height = 360;
+    const g = c.getContext("2d");
+    g.fillStyle = "#0c1222"; g.fillRect(0, 0, 640, 360);
+    g.fillStyle = "#1b2a4d"; g.fillRect(0, 0, 640, 3); g.fillRect(0, 357, 640, 3);
+    g.fillStyle = "#8ef7ea"; g.font = "700 36px system-ui, sans-serif"; g.textAlign = "center";
+    g.fillText("YOUR PICTURE HERE", 320, 175);
+    g.fillStyle = "#8b99bb"; g.font = "500 17px system-ui, sans-serif";
+    g.fillText("1280 \u00d7 720 \u00b7 PNG, JPEG, WebP or GIF", 320, 208);
+    return c.toDataURL("image/png");
+  })();
 
   /* The boards are sold at the desk. The server hands the page what is up,
      with the pictures from its own origin, and the page swaps the table in
      place: the seeded picks are redone so every pilot picks the same from the
      same list. Nothing up, or nothing to ask - the artifact has no server -
-     and the house sponsor stays. */
-  const HOUSE_SPONSORS = SPONSORS.slice();
+     and the boards show the placeholder. */
   let boardsSig = "";
   async function loadBoards() {
     try {
@@ -1702,7 +1711,7 @@
       const next = list.length
         ? list.map(a => ({ id: String(a.id), name: String(a.name || "").slice(0, 40), what: "On the boards",
                            url: /^https?:\/\//.test(String(a.link)) ? String(a.link) : "", art: String(a.image) }))
-        : HOUSE_SPONSORS;
+        : [];
       SPONSORS.length = 0; SPONSORS.push(...next);
       boardCache.clear();
     } catch (e) {}
@@ -3999,14 +4008,12 @@
         if (!demo && S.rid && b.who && b.seenIn !== S.rid) { b.seenIn = S.rid; sightings.push(b.who.id); }
         const ax = tr[0] - tl[0], ay = tr[1] - tl[1];
         const cx = bl[0] - tl[0], cy = bl[1] - tl[1];
-        const logo = b.who && b.who.art;
-        const pic = logo && art(logo).still;
+        const pic = art(b.who && b.who.art || ART_BLANK).still;
         if (pic && pic.naturalWidth) {
           const face = Math.hypot(ax, ay) / Math.hypot(cx, cy);
           const shape = pic.naturalWidth / pic.naturalHeight;
-          let uw = 1, vh = 1;
+          let uw = 1, vh = 1;                      // edge to edge: it is a screen, not printed stock
           if (shape > face) vh = face / shape; else uw = shape / face;
-          uw *= 0.94; vh *= 0.94;                  // a margin, as printed stock has
           ctx.save();
           ctx.transform(ax, ay, cx, cy, tl[0], tl[1]);
           ctx.drawImage(pic, (1 - uw) / 2, (1 - vh) / 2, uw, vh);
@@ -5040,7 +5047,7 @@
     function next() {
       if (!stage) return;
       const link = $("hbLink");
-      if (!SPONSORS.length) { link.removeAttribute("href"); stage.setPicture(null); return; }
+      if (!SPONSORS.length) { link.href = "https://billboard.cursorclash.com/"; stage.setPicture(null); return; }
       at = (at + 1) % SPONSORS.length;
       const a = SPONSORS[at];
       if (a.url) link.href = a.url; else link.removeAttribute("href");
@@ -5116,10 +5123,10 @@
     const blankTex = canvasTex(640, 360, (g, w, h) => {
       g.fillStyle = "#0c1222"; g.fillRect(0, 0, w, h);
       g.fillStyle = "#1b2a4d"; g.fillRect(0, 0, w, 4); g.fillRect(0, h - 4, w, 4);
-      g.fillStyle = "#8ef7ea"; g.font = "700 40px system-ui, sans-serif"; g.textAlign = "center";
-      g.fillText("YOUR AD HERE", w / 2, h / 2 - 6);
-      g.fillStyle = "#8b99bb"; g.font = "500 20px system-ui, sans-serif";
-      g.fillText("billboard.cursorclash.com", w / 2, h / 2 + 30);
+      g.fillStyle = "#8ef7ea"; g.font = "700 36px system-ui, sans-serif"; g.textAlign = "center";
+      g.fillText("YOUR PICTURE HERE", w / 2, h / 2 - 6);
+      g.fillStyle = "#8b99bb"; g.font = "500 17px system-ui, sans-serif";
+      g.fillText("1280 \u00d7 720 \u00b7 PNG, JPEG, WebP or GIF", w / 2, h / 2 + 28);
     });
     const faceMat = new THREE.MeshBasicMaterial({ map: blankTex, toneMapped: false });
     const face = new THREE.Mesh(new THREE.PlaneGeometry(SW, SH), faceMat);
@@ -5427,7 +5434,7 @@
       '<div class="btnrow">' +
         '<button class="go ghost" data-act="solo">Single player</button>' +
         '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
-        '<button class="go ghost" data-act="boards">Sponsors</button>' +
+        '<button class="go ghost" data-act="boards">Billboard</button>' +
         '<button class="go ghost" data-act="terms">Terms &amp; credits</button>' +
       '</div>' +
       '<div id="accountSlot"></div>' +
@@ -5661,14 +5668,18 @@
 
     $("boards").innerHTML =
       '<div class="sheet">' +
-        '<h2>On the boards</h2>' +
+        '<h2>Billboard</h2>' +
+        '<div class="btnrow desk">' +
+          '<a class="go" href="https://billboard.cursorclash.com/" target="_blank" rel="noopener">Put your ad on the boards</a>' +
+        '</div>' +
         '<p>Hoardings stand on the bends, out past the wall. They are scenery: ' +
           'nothing to clear, nothing to collect, and no advantage to anyone. ' +
           'They do flash, which is the whole idea - something bright at the edge ' +
           'of your eye while you are threading a gap.</p>' +
-        '<h3>Up at the moment</h3>' + rows +
+        '<h3>Up at the moment</h3>' +
+        (rows || '<p>Nothing yet. The boards are showing the placeholder, and the next ad up is yours for the taking.</p>') +
         '<p>Shown on both servers, to everyone, in every race.</p>' +
-        '<p>For business inquiries contact ' +
+        '<p>Questions: ' +
           '<a href="mailto:niculai.gabriel@gmail.com">niculai.gabriel@gmail.com</a>.</p>' +
         '<div class="btnrow close">' +
           '<button class="go" data-act="closeboards">Back</button>' +
