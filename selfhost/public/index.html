@@ -4091,12 +4091,13 @@
     }
 
     for (const p of pillarsNear(uMin - 80, uMax + 80, wd)) {
-      if (!demo && S.cleared && S.cleared.has(pillarKey(p))) continue;
+      if (!demo && S.blown && S.blown.has(pillarKey(p))) continue;     // the rocket had it
       const y = H - (p.u + p.h - dist);
       ctx.save();
       OBSTACLES[p.kind || 0].draw(ctx, p.x - p.w / 2, y, p.w, p.h, now, p.u % 7);
       ctx.restore();
     }
+    if (!demo && S.booms) drawRocket(ctx, dist, now);
 
     const edge = (xs) => {
       ctx.beginPath();
@@ -5814,6 +5815,7 @@
   const pillarKey = p => p.u + ":" + p.x;
   function resetPowers() {
     S.powers = []; S.dealtFor = null; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false;
+    S.rocket = null; S.blown = new Set(); S.booms = [];
     S.tauntMute = false; S.tauntBoost = 1; S.wipes = 0; S.slipUntil = 0; S.slipOff = { x: 0, y: 0 };
     $("powerTag").classList.remove("used"); $("powerNote").hidden = true;
   }
@@ -5831,14 +5833,20 @@
     const uNow = S.dist + H - S.cy;
     if (p.id === "rocket") {
       let best = null;
-      for (const q of pillarsNear(uNow, uNow + H * 1.5, S.world)) {
-        if (q.u + q.h < uNow || S.cleared.has(pillarKey(q))) continue;
+      // the nearest obstacle ahead that is on the screen: the bang is the point
+      for (const q of pillarsNear(uNow, S.dist + H + 30, S.world)) {
+        if (q.u + q.h < uNow || q.u > S.dist + H + 30 || S.cleared.has(pillarKey(q))) continue;
         if (!best || q.u < best.u) best = q;
       }
       if (!best) { tagNote("nothing ahead to hit - save it for a milestone"); return; }
+      /* The obstacle stops being a hazard the moment the rocket leaves - a
+         pilot should never die to something they just fired at - but it
+         stands until the rocket gets there and blows it up. */
       S.cleared.add(pillarKey(best));
-      burst(best.x, best.u + best.h / 2, "#ffb347", 30);
-      tagNote("obstacle cleared");
+      const tx = best.x, tu = best.u + best.h / 2;
+      S.rocket = { key: pillarKey(best), x0: S.cx, u0: uNow, x1: tx, u1: tu, t0: performance.now(),
+                   dur: Math.min(1000, 260 + Math.hypot(tx - S.cx, tu - uNow) * 0.9) };
+      tagNote("rocket away");
     } else if (p.id === "poop" || p.id === "knife" || p.id === "banana") {
       const id = p.id + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
       const d = { op: "drop", id, kind: p.id, u: Math.round(uNow), x: Math.round(S.cx) };
@@ -5916,6 +5924,64 @@
     o.x -= dx; o.y -= dy;
     if (Math.abs(o.x) < 0.3 && Math.abs(o.y) < 0.3) { o.x = 0; o.y = 0; }
     S.cx = Math.max(R, Math.min(W - R, S.cx - dx)); S.cy = Math.max(R, Math.min(H - R, S.cy - dy));
+  }
+  /* The rocket on its way: drawn along a straight line from where it was
+     fired to the obstacle, nose first, flame behind, easing up to speed.
+     On arrival the obstacle is blown - a flash, a ring, and sparks and
+     smoke thrown out - and only then does it stop being drawn. */
+  function drawRocket(c, dist, now) {
+    const r = S.rocket;
+    if (r) {
+      const k = Math.min(1, (now - r.t0) / r.dur), kk = k * (0.35 + 0.65 * k);
+      const x = r.x0 + (r.x1 - r.x0) * kk, u = r.u0 + (r.u1 - r.u0) * kk;
+      const y = H - (u - dist);
+      for (let i = 0; i < 4; i++) {
+        PARTS.push({ x: x + (Math.random() - 0.5) * 8, u: u - 18, vx: (Math.random() - 0.5) * 60, vu: -(160 + Math.random() * 120),
+                     born: now, life: 280 + Math.random() * 160, size: 3 + Math.random() * 2.5,
+                     col: Math.random() < 0.5 ? "#ffd34d" : "#ff5e1f", grow: false, twinkle: false, fall: false });
+      }
+      // the flame itself, a short streak behind the nose
+      { const a = Math.atan2(-(r.u1 - r.u0), r.x1 - r.x0);
+        const g = c.createLinearGradient(x, y, x - Math.cos(a) * 46, y - Math.sin(a) * 46);
+        g.addColorStop(0, "rgba(255,230,120,.95)"); g.addColorStop(0.5, "rgba(255,94,31,.6)"); g.addColorStop(1, "rgba(255,94,31,0)");
+        c.save(); c.strokeStyle = g; c.lineWidth = 9; c.lineCap = "round";
+        c.beginPath(); c.moveTo(x - Math.cos(a) * 14, y - Math.sin(a) * 14); c.lineTo(x - Math.cos(a) * 46, y - Math.sin(a) * 46); c.stroke(); c.restore(); }
+      const pic = art(powerArt("rocket", 64)).still;
+      if (pic && pic.naturalWidth) {
+        const a = Math.atan2(-(r.u1 - r.u0), r.x1 - r.x0);      // on screen, up is less u
+        c.save(); c.translate(x, y); c.rotate(a + Math.PI / 4);    // the picture's nose points up and right
+        c.drawImage(pic, -28, -28, 56, 56);
+        c.restore();
+      }
+      if (k >= 1) {
+        S.rocket = null;
+        S.blown.add(r.key);
+        S.booms.push({ x: r.x1, u: r.u1, t0: now });
+        burst(r.x1, r.u1, "#ffb347", 36);
+        burst(r.x1, r.u1, "#ffe9b0", 12);
+        for (let i = 0; i < 14; i++) {
+          const an = Math.random() * TAU, sp = 40 + Math.random() * 50;
+          PARTS.push({ x: r.x1, u: r.u1, vx: Math.cos(an) * sp, vu: Math.sin(an) * sp, born: now, life: 900 + Math.random() * 500,
+                       size: 5 + Math.random() * 5, col: "rgba(120,124,140,.55)", grow: true, twinkle: false, fall: false });
+        }
+      }
+    }
+    for (let i = S.booms.length - 1; i >= 0; i--) {
+      const b = S.booms[i], k = (now - b.t0) / 560;
+      if (k >= 1) { S.booms.splice(i, 1); continue; }
+      const y = H - (b.u - dist);
+      c.save();
+      c.globalAlpha = 1 - k;
+      c.strokeStyle = "#ffb347"; c.lineWidth = 2 + 10 * (1 - k);
+      c.beginPath(); c.arc(b.x, y, 12 + 120 * k, 0, TAU); c.stroke();
+      c.strokeStyle = "#ff5e1f"; c.lineWidth = 1 + 4 * (1 - k);
+      c.beginPath(); c.arc(b.x, y, 6 + 70 * k, 0, TAU); c.stroke();
+      if (k < 0.35) {
+        c.globalAlpha = (0.35 - k) / 0.35;
+        c.fillStyle = "#fff4d6"; c.beginPath(); c.arc(b.x, y, 48 * (1 - k * 1.4), 0, TAU); c.fill();
+      }
+      c.restore();
+    }
   }
   function pickDrops() {
     if (!S.drops) return;
