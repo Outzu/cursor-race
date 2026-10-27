@@ -597,6 +597,8 @@
   .power-tag img { width: 30px; height: 30px; display: block; }
   .power-tag small { color: var(--dim); font-size: 9px; letter-spacing: .08em; text-transform: none; }
   .power-tag.used small { color: var(--amber); }
+  .power-tag .more { margin-left: 4px; padding: 2px 7px; border-radius: 999px; background: var(--amber); color: var(--void); font-size: 10px; font-weight: 700; }
+  .power-tag.empty { opacity: .5; cursor: default; }
   /* what just happened to you: a line above the tag, gone in a few seconds */
   .power-note { position: absolute; left: 12px; bottom: 92px; z-index: 5; max-width: min(420px, calc(100% - 24px));
     padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--void) 82%, transparent);
@@ -1716,6 +1718,40 @@
     const y = H - (g.u - dist);          // where it sits down the screen
     if (y < g.appearY || y > H + 40) return 0;
     return Math.min(1, (y - g.appearY) / 70);
+  }
+
+  /* The ? coin: rarer than a gem, seeded the same way, and claimed the same
+     way - first to touch it takes it. What it gives is another power, drawn
+     at random on the taker's own screen; nobody else needs to know which. */
+  const MYST_EVERY = 2600, MYST_R = 15;
+  const mystCache = new Map();
+  function mystForBucket(n, wd) {
+    const key = wd.seed + ":m" + n;
+    let list = mystCache.get(key);
+    if (list) return list;
+    const rnd = mulberry32(hashStr(key));
+    list = [];
+    if (n >= 1 && rnd() < 0.45) {
+      let u = (n + 0.25 + rnd() * 0.5) * MYST_EVERY;
+      const off = ((u - GATE_START) % GATE_SPACE + GATE_SPACE) % GATE_SPACE;
+      if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
+      const room = Math.max(0, halfW(u) - MYST_R - 26);
+      list.push({ id: "m" + n + "-0", u, x: centerX(u, wd) + (rnd() * 2 - 1) * room, appearY: 40 + rnd() * 300 });
+    }
+    if (mystCache.size > 80) mystCache.clear();
+    mystCache.set(key, list);
+    return list;
+  }
+  function mystNear(uMin, uMax, wd) {
+    const out = [];
+    for (let n = Math.max(1, Math.floor(uMin / MYST_EVERY) - 1); n <= Math.ceil(uMax / MYST_EVERY) + 1; n++) {
+      for (const m of mystForBucket(n, wd)) if (m.u > uMin && m.u < uMax) out.push(m);
+    }
+    return out;
+  }
+  function mystById(id, wd) {
+    const m = /^m(\d+)-(\d+)$/.exec(id);
+    return m ? (mystForBucket(Number(m[1]), wd)[Number(m[2])] || null) : null;
   }
 
   function pillarsNear(uMin, uMax, wd) {
@@ -3256,7 +3292,7 @@
         r.on("kick", kickedBy, () => {});
         r.on("gem", msg => {
           const d = msg && msg.data;
-          if (!d || typeof d.id !== "string" || !/^g\d+-\d+$/.test(d.id)) return;
+          if (!d || typeof d.id !== "string" || !/^[gm]\d+-\d+$/.test(d.id)) return;
           takeGem(d.id, msg.peer, !!msg.sameTab);
         }, () => {});
         r.on("power", onPower, () => {});
@@ -3721,6 +3757,7 @@
     if (S.gemsTaken.has(id)) return;
     S.gemsTaken.set(id, peer);
     S.gemPending.delete(id);
+    if (id[0] === "m") return takeMyst(id, mine);
     const g = gemById(id, S.world);
     if (g) {
       for (let i = 0; i < 10; i++) {
@@ -3738,6 +3775,17 @@
     $("gemNow").textContent = String(S.runGems);
     $("gemLine").hidden = false;
     if (!S.serverLedger) { S.gems += 1; saveProfile(); }
+  }
+
+  /* a ? coin taken: a burst of gold, and for the taker another power in the queue */
+  function takeMyst(id, mine) {
+    const m = mystById(id, S.world);
+    if (m) burst(m.x, m.u, mine ? "#feb703" : "rgba(254,183,3,.45)", 14);
+    if (!mine || !S.powers) return;
+    const p = POWERS[Math.floor(Math.random() * POWERS.length)];
+    S.powers.push(p.id);
+    hudNote(p.id, "A " + p.name.toLowerCase() + " from the coin. " + (S.powers.length > 1 ? S.powers.length + " in hand, used in order." : "Yours to use."));
+    syncPowerTag(true);
   }
 
   /* ---------- profile ---------- */
@@ -4185,6 +4233,23 @@
     }
 
     if (!demo) drawDrops(ctx, dist, now);
+    if (!demo && !S.solo) for (const m of mystNear(uMin - 120, uMax + 120, wd)) {
+      if (S.gemsTaken.has(m.id)) continue;
+      const ph = gemShow(m, dist);
+      if (ph <= 0) continue;
+      const y = H - (m.u - dist);
+      const r = MYST_R * (0.5 + 0.5 * ph), wob = Math.sin(now / 260 + m.u);
+      ctx.save();
+      ctx.globalAlpha = ph;
+      ctx.translate(m.x, y);
+      ctx.scale(0.72 + 0.28 * Math.abs(Math.cos(now / 520 + m.u)), 1);     // a coin turning on its edge
+      ctx.fillStyle = "#feb703"; ctx.beginPath(); ctx.arc(0, 0, r, 0, TAU); ctx.fill();
+      ctx.lineWidth = 2.5; ctx.strokeStyle = "#ffe08a"; ctx.beginPath(); ctx.arc(0, 0, r - 2.5, 0, TAU); ctx.stroke();
+      ctx.fillStyle = "#3a2a06"; ctx.font = "700 " + Math.round(r * 1.5) + 'px "Azeret Mono", monospace';
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText("?", 0, 1 + wob);
+      ctx.restore();
+    }
     for (const g of gemsNear(uMin - 120, uMax + 120, wd)) {
       if (S.gemsTaken.has(g.id)) continue;
       const ph = gemShow(g, dist);
@@ -4410,6 +4475,12 @@
             if (gemShow(g, S.dist) < 1) continue;
             const dx = S.cx - g.x, dy = (H - (g.u - S.dist)) - S.cy;
             if (dx * dx + dy * dy < (GEM_R + R) * (GEM_R + R)) claimGem(g.id);
+          }
+          if (!S.solo) for (const m of mystNear(uNow - 260, uNow + 260, S.world)) {
+            if (S.gemsTaken.has(m.id) || S.gemPending.has(m.id)) continue;
+            if (gemShow(m, S.dist) < 1) continue;
+            const dx = S.cx - m.x, dy = (H - (m.u - S.dist)) - S.cy;
+            if (dx * dx + dy * dy < (MYST_R + R) * (MYST_R + R)) claimGem(m.id);
           }
           pickDrops();
           S.entrants = Math.max(S.entrants, roundField().length);
@@ -5519,7 +5590,8 @@
         '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
         '<div><b>The channel narrows and speeds up</b> the further you get.</div>' +
         '<div><b>Last cursor still inside takes the whole pot.</b></div>' +
-        '<div><b>At the lights you are dealt a power</b> &mdash; rocket, poop, knife, banana, MP3 player or subwoofer, at random, one a race.</div>' +
+        '<div><b>At the lights you are dealt a power</b> &mdash; rocket, poop, knife, banana, MP3 player or subwoofer, at random.</div>' +
+        '<div><b>A ? coin in the channel gives another</b>, at random. They queue up; a click uses the first in hand.</div>' +
         '<div><b>Opening a race starts a ' + S.gateSecs + ' second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
         '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
@@ -5684,7 +5756,7 @@
   }
   const powerImg = (p, px) => '<img src="' + powerArt(p.id, px) + '" alt="" width="' + px / 2 + '" height="' + px / 2 + '" decoding="async">';
   function powersHTML() {
-    return '<div class="powers"><div class="head">At the lights every pilot is dealt one of these</div>' +
+    return '<div class="powers"><div class="head">At the lights every pilot is dealt one of these; a ? coin in the channel gives another</div>' +
       POWERS.map(p => '<div class="power">' + powerImg(p, 88) + '<b>' + esc(p.name) + '</b><span>' + esc(p.blurb) + '</span></div>').join("") +
     '</div>';
   }
@@ -5694,17 +5766,31 @@
     return '<div class="dealt">' + powerImg(p, 104) + '<div><b>You got the <em>' + esc(p.name) + '</em></b>' + esc(p.blurb) + '</div></div>';
   }
   /* the tag in the frame during a multiplayer race: what you hold */
+  /* The powers in hand, in the order they came: the one dealt at the lights
+     first, then whatever the ? coins gave. A use spends the first. */
   let powerTagFor = "";
-  function syncPowerTag() {
+  function powerById(id) { return POWERS.find(q => q.id === id) || null; }
+  function syncPowerTag(force) {
     const tag = $("powerTag");
-    const p = (S.phase === "racing" && !S.solo && S.joined) ? powerFor(S.rid, S.uid || S.me) : null;
-    const key = p ? S.rid + ":" + p.id : "";
-    if (key === powerTagFor) return;
+    const inRace = S.phase === "racing" && !S.solo && S.joined && S.powers;
+    if (inRace && S.dealtFor !== S.rid) {         // the deal, into the hand, once a race
+      S.dealtFor = S.rid;
+      const d = powerFor(S.rid, S.uid || S.me);
+      if (d) S.powers.unshift(d.id);
+    }
+    const key = inRace ? S.rid + ":" + S.powers.join(",") : "";
+    if (key === powerTagFor && !force) return;
     powerTagFor = key;
-    if (!p) { tag.hidden = true; tag.innerHTML = ""; return; }
-    tag.innerHTML = powerImg(p, 60) + '<span>' + esc(p.name) + '<br><small>' + (TOUCH ? "tap to use" : "click or space to use") + '</small></span>';
-    tag.classList.toggle("used", !!S.powerUsed);
-    tag.hidden = false;
+    if (!inRace) { tag.hidden = true; tag.innerHTML = ""; return; }
+    const p = powerById(S.powers[0]);
+    if (!p) {
+      tag.innerHTML = '<span>no power<br><small>a ? coin gives one</small></span>';
+      tag.className = "power-tag empty"; tag.hidden = false; return;
+    }
+    tag.innerHTML = powerImg(p, 60) + '<span>' + esc(p.name) +
+      (S.powers.length > 1 ? '<span class="more">+' + (S.powers.length - 1) + '</span>' : '') +
+      '<br><small>' + (TOUCH ? "tap to use" : "click or space to use") + '</small></span>';
+    tag.className = "power-tag"; tag.hidden = false;
   }
   const tagNote = t => { const el = $("powerTag").querySelector("small"); if (el) el.textContent = t; };
   let noteTimer = 0;
@@ -5727,7 +5813,7 @@
   const DROP_R = 18;
   const pillarKey = p => p.u + ":" + p.x;
   function resetPowers() {
-    S.powerUsed = false; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false;
+    S.powers = []; S.dealtFor = null; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false;
     S.tauntMute = false; S.tauntBoost = 1; S.wipes = 0; S.slipUntil = 0; S.slipOff = { x: 0, y: 0 };
     $("powerTag").classList.remove("used"); $("powerNote").hidden = true;
   }
@@ -5739,8 +5825,8 @@
     }
   }
   function usePower() {
-    if (S.phase !== "racing" || S.solo || !S.joined || S.powerUsed || !S.cleared) return;
-    const p = powerFor(S.rid, S.uid || S.me);
+    if (S.phase !== "racing" || S.solo || !S.joined || !S.cleared || !S.powers) return;
+    const p = powerById(S.powers[0]);
     if (!p) return;
     const uNow = S.dist + H - S.cy;
     if (p.id === "rocket") {
@@ -5766,8 +5852,18 @@
       if (S.tableRoom) S.tableRoom.emit("power", { op: "boom" }).catch(() => {});
       tagNote("the next taunt hits them hard");
     }
-    S.powerUsed = true;
-    $("powerTag").classList.add("used");
+    S.powers.shift();
+    if (S.powers.length) {                         // the next one steps up, in a moment, so the note can be read
+      const note = $("powerTag").querySelector("small") && $("powerTag").querySelector("small").textContent;
+      setTimeout(() => { syncPowerTag(true); }, 1500);
+      powerTagFor = "";
+      const tag = $("powerTag"); tag.classList.add("used");
+      setTimeout(() => tag.classList.remove("used"), 1500);
+      void note;
+    } else {
+      $("powerTag").classList.add("used");
+      powerTagFor = S.rid + ":spent";               // the tag keeps its last word until the next coin
+    }
   }
   /* what a drop does to whoever runs into it */
   function sufferDrop(it) {
