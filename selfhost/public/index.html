@@ -2796,7 +2796,7 @@
   function emitParticles(key, tail, col, x, u, now, rateScale) {
     const sp = tail && tail.spark;
     if (!sp) return;
-    const gap = 1000 / (sp.rate * (rateScale || 1));
+    const gap = 1000 / (sp.rate * (rateScale || 1) * PERF[perfTier].sparks);
     const prev = lastSpark.get(key) || 0;
     if (now - prev < gap) return;
     const n = Math.min(4, Math.max(1, Math.floor((now - prev) / gap)));
@@ -2935,10 +2935,14 @@
     c.beginPath(); c.moveTo(-2, 8); c.lineTo(8, -2); c.moveTo(2, 12); c.lineTo(12, 2); c.stroke();
     hatch = ctx.createPattern(p, "repeat");
   }
+  /* How many device pixels the canvas gets per CSS pixel, at most. Two is
+     crisp; the frame watchdog below lowers it on a machine that cannot keep
+     up, since smooth motion matters more here than sharp edges. */
+  let dprCap = 2;
   function fit() {
     const r = stage.getBoundingClientRect();
     if (r.width < 2 || r.height < 2) return;   // hidden, e.g. on the pilot page
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(dprCap, window.devicePixelRatio || 1);
     cv.width = Math.max(1, Math.round(r.width * dpr));
     cv.height = Math.max(1, Math.round(r.height * dpr));
     scale = Math.min(r.width / W, r.height / H) * dpr;
@@ -2948,10 +2952,16 @@
   }
   new ResizeObserver(fit).observe(stage);
 
-  stage.addEventListener("pointermove", e => {
+  /* A mouse points, and where it points is read the moment the browser
+     hears from it: pointerrawupdate comes at the device's own rate, where
+     the browser has it, rather than once a frame like pointermove - up to a
+     frame sooner, which is the one lag a pilot feels in the hand. Both are
+     bound; the later of the two for any one movement finds nothing to
+     change. */
+  function pointAt(e) {
     if (drags(e.pointerType)) return;   // a finger or a pen drags; only a mouse points
     const r = stage.getBoundingClientRect();
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const dpr = Math.min(dprCap, window.devicePixelRatio || 1);
     const tx = ((e.clientX - r.left) * dpr - offX) / scale, ty = ((e.clientY - r.top) * dpr - offY) / scale;
     if (slipping() && S.slipOff && lastPt) {        // the banana: every move goes the other way
       S.slipOff.x -= 2 * (tx - lastPt[0]); S.slipOff.y -= 2 * (ty - lastPt[1]);
@@ -2961,7 +2971,9 @@
     S.cx = Math.max(R, Math.min(W - R, tx + o.x));
     S.cy = Math.max(R, Math.min(H - R, ty + o.y));
     S.inside = true;
-  });
+  }
+  stage.addEventListener("pointermove", pointAt);
+  if ("onpointerrawupdate" in window) stage.addEventListener("pointerrawupdate", pointAt);
   stage.addEventListener("pointerleave", e => {
     // a lifted pen is not a pilot who wandered off the field
     if (TOUCH || drags(e.pointerType)) return;
@@ -4474,7 +4486,7 @@
     if (now - lastRail > 140) {
       lastRail = now;
       paintRail(); drawPreviews(now); tickVeil(); paintLadderHud(); paintNetSig();
-      $("pingTag").textContent = S.ping === null ? "" : "ping " + S.ping + " ms";
+      $("pingTag").textContent = (S.ping === null ? "" : "ping " + S.ping + " ms") + perfWord();
     }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
   }
@@ -4498,8 +4510,48 @@
   }
   let hudSpeedAt = 0, hudMetres = -1;            // the readout, last written
   let lastFrameAt = 0;
+  /* The frame watchdog. It keeps a running average of how long a frame takes
+     against how long the screen gives it - a sixtieth of a second, or half
+     that where the frames come fast enough to say the screen is a 120 Hz
+     one - and when the average runs a quarter over for
+     a couple of seconds it drops one notch: first the pixel density, to one
+     and a half, then to one with half the sparks. After twenty quiet seconds
+     it tries a notch back up, once a minute at most, so a phone that was
+     merely warming up gets its sharpness back and one that cannot cope
+     stays where it can keep up. Stalls - a tab in the background, a
+     dialog - are not counted; nothing is learnt from them. */
+  let perfTier = 0, frameAvg = 16, perfSince = 0, perfLastUp = 0, prevFrame = 0, quietSince = 0;
+  const PERF = [{ dpr: 2, sparks: 1 }, { dpr: 1.5, sparks: 1 }, { dpr: 1, sparks: 0.5 }];
+  function setPerfTier(t) {
+    perfTier = Math.max(0, Math.min(PERF.length - 1, t));
+    dprCap = PERF[perfTier].dpr;
+    fit();
+    perfSince = 0; quietSince = 0;
+  }
+  function watchFrames(now) {
+    const dt = prevFrame ? now - prevFrame : 0;
+    prevFrame = now;
+    if (dt <= 0 || dt > 250 || document.hidden) return;        // a stall, not a frame
+    frameAvg += (dt - frameAvg) * 0.06;
+    if (now < 4000) return;                                     // the first seconds are loading, not racing
+    const budget = frameAvg < 10 ? 8.33 : 16.67;                // a 120 Hz screen running easily, or a 60 Hz one
+    if (frameAvg > budget * 1.25) {
+      quietSince = 0;
+      if (!perfSince) perfSince = now;
+      else if (now - perfSince > 2000 && perfTier < PERF.length - 1) setPerfTier(perfTier + 1);
+    } else {
+      perfSince = 0;
+      if (frameAvg < budget * 1.05 && perfTier > 0) {
+        if (!quietSince) quietSince = now;
+        else if (now - quietSince > 20000 && now - perfLastUp > 60000) { perfLastUp = now; setPerfTier(perfTier - 1); }
+      } else quietSince = 0;
+    }
+  }
+  const perfWord = () => perfTier ? " · " + Math.round(1000 / frameAvg) + " fps · eco" + perfTier : "";
+
   function frame(now) {
     lastFrameAt = now;
+    watchFrames(now);
     kickIdle(now);
     step(now);
     draw(now);
@@ -5005,7 +5057,7 @@
   /* ---------- pointer tail across the interface ---------- */
   const fx = $("fx"), fxc = fx.getContext("2d");
   let fxPts = [], fxParts = [], fxMoveAt = 0, fxSpark = 0;
-  const dprOf = () => Math.min(2, window.devicePixelRatio || 1);
+  const dprOf = () => Math.min(dprCap, window.devicePixelRatio || 1);
   function fxSize() {
     const d = dprOf();
     fx.width = Math.max(1, Math.round(window.innerWidth * d));
