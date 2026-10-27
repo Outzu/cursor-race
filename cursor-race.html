@@ -564,30 +564,39 @@
   .dealt img { width: 52px; height: 52px; display: block; flex: none; }
   .dealt b { display: block; color: var(--ink); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
   .dealt em { font-style: normal; color: var(--amber); }
-  .power-tag { position: absolute; left: 12px; bottom: 34px; z-index: 5; display: flex; align-items: center; gap: 8px;
-    padding: 6px 12px 6px 6px; border-radius: 999px; border: 0; font: inherit;
+  /* the power in hand: under the gems in the top-left readout; on a phone a round button with the picture in the middle */
+  .power-tag { position: relative; margin-top: 12px; display: inline-flex; align-items: center; gap: 8px;
+    padding: 6px 12px 6px 6px; border-radius: 999px; border: 0; font: inherit; line-height: 1.3;
     background: color-mix(in srgb, var(--void) 78%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 50%, transparent);
     font-family: var(--data); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
-    cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+    cursor: pointer; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .power-tag .q { display: none; }
   .power-tag:active { background: color-mix(in srgb, var(--amber) 30%, var(--void)); }
   .power-tag.used { opacity: .55; cursor: default; }
   .power-tag img { width: 30px; height: 30px; display: block; }
   .power-tag small { color: var(--dim); font-size: 9px; letter-spacing: .08em; text-transform: none; }
   .power-tag.used small { color: var(--amber); }
-  .power-tag .more { margin-left: 4px; padding: 2px 7px; border-radius: 999px; background: var(--amber); color: var(--void); font-size: 10px; font-weight: 700; }
+  .power-tag .more { padding: 2px 7px; border-radius: 999px; background: var(--amber); color: var(--void); font-size: 10px; font-weight: 700; font-style: normal; }
   .power-tag.empty { opacity: .5; cursor: default; }
   /* what just happened to you: a line above the tag, gone in a few seconds */
-  .power-note { position: absolute; left: 12px; bottom: 92px; z-index: 5; max-width: min(420px, calc(100% - 24px));
+  .power-note { position: relative; margin-top: 8px; max-width: min(300px, 60vw);
     padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--void) 82%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hot) 55%, transparent);
-    font-family: var(--data); font-size: 11px; letter-spacing: .06em; color: var(--ink); pointer-events: none; }
+    font-family: var(--data); font-size: 11px; letter-spacing: .06em; line-height: 1.4; color: var(--ink); pointer-events: none; }
+  @media (pointer: coarse) {
+    .power-tag { width: 58px; height: 58px; padding: 0; border-radius: 50%; justify-content: center; margin-top: 10px; }
+    .power-tag > span { display: none; }
+    .power-tag .q { display: block; font-size: 24px; font-weight: 700; color: var(--dim); }
+    .power-tag img { width: 36px; height: 36px; }
+    .power-tag .more { position: absolute; top: -4px; right: -6px; }
+    .power-note { max-width: min(260px, 70vw); font-size: 10px; }
+  }
   .power-note img { width: 22px; height: 22px; vertical-align: middle; margin-right: 8px; }
   @media (max-width: 560px) {
     .powers { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
     .power { padding: 7px 3px 6px; font-size: 8px; }
     .power img { width: 34px; height: 34px; }
     .power b { font-size: 9px; letter-spacing: .04em; }
-    .power-tag { bottom: 30px; }
   }
   .howto {
     margin: 4px auto 10px;
@@ -1120,14 +1129,14 @@
       <div class="corner tr" id="speedTag">hold / 000 u/s</div>
       <div class="live" id="live"></div>
       <div class="corner bl" id="pingTag"></div>
-      <div class="power-tag" id="powerTag" hidden></div>
-      <div class="power-note" id="powerNote" hidden></div>
       <div class="readout" id="readout" hidden>
         <div class="big" id="distBig">0</div>
         <div class="unit">metres clear</div>
         <div class="unit out" id="outLine" hidden></div>
         <div class="coinline" id="coinLine"><span class="pip"></span><b id="coinNow">0</b><span id="coinWord">coins</span></div>
         <div class="coinline" id="gemLine" hidden><span class="pip gem"></span><b id="gemNow">0</b><span>gems</span></div>
+        <div class="power-tag" id="powerTag" hidden></div>
+        <div class="power-note" id="powerNote" hidden></div>
       </div>
     </div>
   </div>
@@ -3639,6 +3648,7 @@
     const k0 = Math.round((u - GATE_START) / GATE_SPACE);
     for (let k = k0 - 1; k <= k0 + 1; k++) {
       if (k < 0) continue;
+      if (S.gatesOff && S.gatesOff.has(k)) continue;             // the rocket had this one
       const g = gateAt(k, wd);
       if (u > g.u - R && u < g.u + GATE_TH + R) {
         if (Math.abs(cx - g.gc) > g.gw / 2 - R) return "missed the gate";
@@ -3975,6 +3985,8 @@
       const lT = g.b.c - g.b.hw, lB = g.a.c - g.a.hw;
       const rT = g.b.c + g.b.hw, rB = g.a.c + g.a.hw;
       const gl = g.gc - g.gw / 2, gr = g.gc + g.gw / 2;
+      const down = !demo && S.gatesBlown && S.gatesBlown.has(k);       // the rocket had it: wreckage, no bar
+      if (down) ctx.globalAlpha = 0.22;
       ctx.fillStyle = "#27375a";
       ctx.beginPath();
       ctx.moveTo(lT, yTop); ctx.lineTo(gl, yTop); ctx.lineTo(gl, yBot); ctx.lineTo(lB, yBot);
@@ -3990,6 +4002,7 @@
       ctx.fillStyle = "#feb703";
       ctx.fillRect(gl - 3, yTop, 3, GATE_TH);
       ctx.fillRect(gr, yTop, 3, GATE_TH);
+      if (down) ctx.globalAlpha = 1;
     }
 
     /* the starting grid, for as long as it is still on screen */
@@ -5581,7 +5594,7 @@
      shown. */
   const POWERS = [{
     id: "rocket", name: "Rocket",
-    blurb: "Knocks out the next obstacle ahead of you.",
+    blurb: "Fires straight ahead. Takes out the obstacle or gate it hits.",
     draw(c, s) {
       c.save(); c.translate(s / 2, s / 2); c.rotate(-Math.PI / 4); c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
       // flame
@@ -5746,12 +5759,12 @@
     if (!inRace) { tag.hidden = true; tag.innerHTML = ""; return; }
     const p = powerById(S.powers[0]);
     if (!p) {
-      tag.innerHTML = '<span>no power<br><small>a ? coin gives one</small></span>';
+      tag.innerHTML = '<span class="q">?</span><span>no power<br><small>a ? coin gives one</small></span>';
       tag.className = "power-tag empty"; tag.hidden = false; return;
     }
-    tag.innerHTML = powerImg(p, 60) + '<span>' + esc(p.name) +
-      (S.powers.length > 1 ? '<span class="more">+' + (S.powers.length - 1) + '</span>' : '') +
-      '<br><small>' + (TOUCH ? "tap to use" : "click or space to use") + '</small></span>';
+    tag.innerHTML = powerImg(p, 60) +
+      (S.powers.length > 1 ? '<i class="more">+' + (S.powers.length - 1) + '</i>' : '') +
+      '<span>' + esc(p.name) + '<br><small>' + (TOUCH ? "tap to use" : "click or space to use") + '</small></span>';
     tag.className = "power-tag"; tag.hidden = false;
   }
   const tagNote = t => { const el = $("powerTag").querySelector("small"); if (el) el.textContent = t; };
@@ -5776,7 +5789,7 @@
   const pillarKey = p => p.u + ":" + p.x;
   function resetPowers() {
     S.powers = []; S.dealtFor = null; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false;
-    S.rocket = null; S.blown = new Set(); S.booms = [];
+    S.rocket = null; S.blown = new Set(); S.booms = []; S.gatesOff = new Set(); S.gatesBlown = new Set();
     S.tauntMute = false; S.tauntBoost = 1; S.wipes = 0; S.slipUntil = 0; S.slipOff = { x: 0, y: 0 };
     $("powerTag").classList.remove("used"); $("powerNote").hidden = true;
   }
@@ -5793,21 +5806,17 @@
     if (!p) return;
     const uNow = S.dist + H - S.cy;
     if (p.id === "rocket") {
-      let best = null;
-      // the nearest obstacle ahead that is on the screen: the bang is the point
-      for (const q of pillarsNear(uNow, S.dist + H + 30, S.world)) {
-        if (q.u + q.h < uNow || q.u > S.dist + H + 30 || S.cleared.has(pillarKey(q))) continue;
-        if (!best || q.u < best.u) best = q;
-      }
-      if (!best) { tagNote("nothing ahead to hit - save it for a milestone"); return; }
-      /* The obstacle stops being a hazard the moment the rocket leaves - a
-         pilot should never die to something they just fired at - but it
-         stands until the rocket gets there and blows it up. */
-      S.cleared.add(pillarKey(best));
-      const tx = best.x, tu = best.u + best.h / 2;
-      S.rocket = { key: pillarKey(best), x0: S.cx, u0: uNow, x1: tx, u1: tu, t0: performance.now(),
-                   dur: Math.min(1000, 260 + Math.hypot(tx - S.cx, tu - uNow) * 0.9) };
-      tagNote("rocket away");
+      /* Straight ahead, from where you are, until it meets something: an
+         obstacle or a gate bar, which it takes out, or the wall, or the top
+         of the screen, which it does not. What it will hit stops being a
+         hazard the moment the rocket leaves - a pilot should never die to
+         something they just fired at - but it stands until the bang. */
+      const hit = rocketPath(S.cx, uNow);
+      if (hit.kind === "pillar") S.cleared.add(hit.key);
+      if (hit.kind === "gate") S.gatesOff.add(hit.key);
+      S.rocket = { kind: hit.kind, key: hit.key, x0: S.cx, u0: uNow, x1: S.cx, u1: hit.u, t0: performance.now(),
+                   dur: Math.min(1000, 200 + (hit.u - uNow) * 0.9) };
+      tagNote(hit.kind === "pillar" ? "rocket away" : hit.kind === "gate" ? "rocket away - a gate is coming down" : "rocket away - straight into nothing");
     } else if (p.id === "poop" || p.id === "knife" || p.id === "banana") {
       const id = p.id + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
       const d = { op: "drop", id, kind: p.id, u: Math.round(uNow), x: Math.round(S.cx) };
@@ -5886,6 +5895,25 @@
     if (Math.abs(o.x) < 0.3 && Math.abs(o.y) < 0.3) { o.x = 0; o.y = 0; }
     S.cx = Math.max(R, Math.min(W - R, S.cx - dx)); S.cy = Math.max(R, Math.min(H - R, S.cy - dy));
   }
+  /* Where a rocket fired straight up from (x, u0) meets something: the wall,
+     a gate bar, an obstacle, or the top of the screen. Walked in small steps. */
+  function rocketPath(x, u0) {
+    const top = S.dist + H + 20, wd = S.world;
+    for (let u = u0 + 6; u < top; u += 6) {
+      if (Math.abs(x - centerX(u, wd)) > halfW(u) - 4) return { u, kind: "wall" };
+      const k = Math.round((u - GATE_START) / GATE_SPACE);
+      if (k >= 0 && !S.gatesOff.has(k)) {
+        const g = gateAt(k, wd);
+        if (u >= g.u && u <= g.u + GATE_TH && Math.abs(x - g.gc) > g.gw / 2 - 2) return { u: g.u + GATE_TH / 2, kind: "gate", key: k };
+      }
+      if (breakE(u) > 0) {
+        for (const q of pillarsNear(u - 40, u + 40, wd)) {
+          if (u >= q.u && u <= q.u + q.h && Math.abs(x - q.x) < q.w / 2 && !S.cleared.has(pillarKey(q))) return { u: q.u + q.h / 2, kind: "pillar", key: pillarKey(q) };
+        }
+      }
+    }
+    return { u: top, kind: "air" };
+  }
   /* The rocket on its way: drawn along a straight line from where it was
      fired to the obstacle, nose first, flame behind, easing up to speed.
      On arrival the obstacle is blown - a flash, a ring, and sparks and
@@ -5916,7 +5944,8 @@
       }
       if (k >= 1) {
         S.rocket = null;
-        S.blown.add(r.key);
+        if (r.kind === "pillar") S.blown.add(r.key);
+        if (r.kind === "gate") S.gatesBlown.add(r.key);
         S.booms.push({ x: r.x1, u: r.u1, t0: now });
         burst(r.x1, r.u1, "#ffb347", 36);
         burst(r.x1, r.u1, "#ffe9b0", 12);
