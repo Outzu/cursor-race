@@ -522,8 +522,16 @@ function ledger(uid, pres, peerId, table) {
     e.state = String(pres.state || "out");
     const claimed = Number(pres.dist) || 0;
     e.dist = Math.max(e.dist, Math.min(claimed, G.maxDistAt(r.startsAt, Date.now())));
-    e.rc = Math.max(e.rc || 0, Number(pres.rc) || 0);   // gates cleared, as reported
-    e.rg = Math.max(e.rg || 0, Number(pres.rg) || 0);   // gems taken
+    /* Gates cleared and gems taken, as reported, and only ever growing -
+       except after a wipe: a pilot who stepped in something reports the run's
+       take starting over, with a count of wipes beside it so this can tell a
+       wipe from a stale report. */
+    const pw = Number(pres.pw) || 0;
+    if (pw > (e.pw || 0)) { e.pw = pw; e.rc = Number(pres.rc) || 0; e.rg = Number(pres.rg) || 0; }
+    else {
+      e.rc = Math.max(e.rc || 0, Number(pres.rc) || 0);
+      e.rg = Math.max(e.rg || 0, Number(pres.rg) || 0);
+    }
     return;
   }
 

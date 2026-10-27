@@ -571,6 +571,44 @@
     max-width: 74ch;
   }
   .rules b { color: var(--ink); font-weight: 600; }
+
+  /* the five powers, as dealt: a strip in the lobby, one card at the lights, a tag in the race */
+  .powers { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; width: min(820px, 100%); margin: 2px auto 10px; }
+  .power { display: grid; justify-items: center; gap: 4px; padding: 10px 6px 9px; border-radius: 10px;
+    background: color-mix(in srgb, var(--wall) 42%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--wall) 80%, transparent);
+    font-family: var(--data); font-size: 10px; line-height: 1.35; color: var(--dim); text-align: center; }
+  .power img { width: 44px; height: 44px; display: block; }
+  .power b { color: var(--ink); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+  .powers .head { grid-column: 1 / -1; font-family: var(--data); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--aqua); margin-top: 4px; }
+  .dealt { display: flex; align-items: center; gap: 12px; margin: 6px auto 0; padding: 10px 16px 10px 10px; border-radius: 12px;
+    background: color-mix(in srgb, var(--wall) 55%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
+    font-family: var(--data); font-size: 12px; color: var(--dim); text-align: left; max-width: 420px; }
+  .dealt img { width: 52px; height: 52px; display: block; flex: none; }
+  .dealt b { display: block; color: var(--ink); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
+  .dealt em { font-style: normal; color: var(--amber); }
+  .power-tag { position: absolute; left: 12px; bottom: 34px; z-index: 5; display: flex; align-items: center; gap: 8px;
+    padding: 6px 12px 6px 6px; border-radius: 999px; border: 0; font: inherit;
+    background: color-mix(in srgb, var(--void) 78%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 50%, transparent);
+    font-family: var(--data); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
+    cursor: pointer; touch-action: none; user-select: none; -webkit-user-select: none; }
+  .power-tag:active { background: color-mix(in srgb, var(--amber) 30%, var(--void)); }
+  .power-tag.used { opacity: .55; cursor: default; }
+  .power-tag img { width: 30px; height: 30px; display: block; }
+  .power-tag small { color: var(--dim); font-size: 9px; letter-spacing: .08em; text-transform: none; }
+  .power-tag.used small { color: var(--amber); }
+  /* what just happened to you: a line above the tag, gone in a few seconds */
+  .power-note { position: absolute; left: 12px; bottom: 92px; z-index: 5; max-width: min(420px, calc(100% - 24px));
+    padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--void) 82%, transparent);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hot) 55%, transparent);
+    font-family: var(--data); font-size: 11px; letter-spacing: .06em; color: var(--ink); pointer-events: none; }
+  .power-note img { width: 22px; height: 22px; vertical-align: middle; margin-right: 8px; }
+  @media (max-width: 560px) {
+    .powers { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+    .power { padding: 7px 3px 6px; font-size: 8px; }
+    .power img { width: 34px; height: 34px; }
+    .power b { font-size: 9px; letter-spacing: .04em; }
+    .power-tag { bottom: 30px; }
+  }
   .howto {
     margin: 4px auto 10px;
     max-width: 74ch;
@@ -1128,6 +1166,8 @@
       <div class="corner tr" id="speedTag">hold / 000 u/s</div>
       <div class="live" id="live"></div>
       <div class="corner bl" id="pingTag"></div>
+      <div class="power-tag" id="powerTag" hidden></div>
+      <div class="power-note" id="powerNote" hidden></div>
       <div class="readout" id="readout" hidden>
         <div class="big" id="distBig">0</div>
         <div class="unit">metres clear</div>
@@ -2912,8 +2952,14 @@
     if (drags(e.pointerType)) return;   // a finger or a pen drags; only a mouse points
     const r = stage.getBoundingClientRect();
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    S.cx = ((e.clientX - r.left) * dpr - offX) / scale;
-    S.cy = ((e.clientY - r.top) * dpr - offY) / scale;
+    const tx = ((e.clientX - r.left) * dpr - offX) / scale, ty = ((e.clientY - r.top) * dpr - offY) / scale;
+    if (slipping() && S.slipOff && lastPt) {        // the banana: every move goes the other way
+      S.slipOff.x -= 2 * (tx - lastPt[0]); S.slipOff.y -= 2 * (ty - lastPt[1]);
+    }
+    lastPt = [tx, ty];
+    const o = S.slipOff || { x: 0, y: 0 };
+    S.cx = Math.max(R, Math.min(W - R, tx + o.x));
+    S.cy = Math.max(R, Math.min(H - R, ty + o.y));
     S.inside = true;
   });
   stage.addEventListener("pointerleave", e => {
@@ -2954,7 +3000,7 @@
   }, { passive: true });
   addEventListener("pointermove", e => {
     if (!drags(e.pointerType) || !touchAnchor) return;
-    const f = dprOf() / (scale || 1);          // screen pixels to channel units
+    const f = (dprOf() / (scale || 1)) * (slipping() ? -1 : 1);   // screen pixels to channel units; the banana turns them round
     S.cx = Math.max(R, Math.min(W - R, S.cx + (e.clientX - touchAnchor.x) * f));
     S.cy = Math.max(R, Math.min(H - R, S.cy + (e.clientY - touchAnchor.y) * f));
     touchAnchor = { x: e.clientX, y: e.clientY };
@@ -3188,6 +3234,7 @@
           if (!d || typeof d.id !== "string" || !/^g\d+-\d+$/.test(d.id)) return;
           takeGem(d.id, msg.peer, !!msg.sameTab);
         }, () => {});
+        r.on("power", onPower, () => {});
       } catch (e) {
         S.table = null;
         say(e && e.code === "limit_reached" ? "that lobby is full" : "could not take a seat");
@@ -3275,6 +3322,7 @@
     S.heading = -Math.PI / 2;
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
+    resetPowers();
     $("gemLine").hidden = true; $("outLine").hidden = true;
     exitFocus();
     document.body.classList.remove("hideveil");
@@ -3421,6 +3469,7 @@
     S.heading = -Math.PI / 2;
     placeCursorForTouch();
     S.gemsTaken.clear(); S.gemPending.clear(); S.runGems = 0;
+    resetPowers();
     $("gemLine").hidden = true; $("outLine").hidden = true;
     document.body.classList.remove("hideveil");
     $("coinNow").textContent = "0";
@@ -3607,6 +3656,7 @@
     }
     if (breakE(u) > 0) {
       for (const p of pillarsNear(u - 80, u + 80, wd)) {
+        if (S.cleared && S.cleared.has(pillarKey(p))) continue;        // the rocket had it
         if (u > p.u - R && u < p.u + p.h + R && Math.abs(cx - p.x) < p.w / 2 + R) {
           return OBSTACLES[p.kind || 0].hit;
         }
@@ -3835,7 +3885,7 @@
       who: S.name || "pilot",
       color: S.color,
       skin: S.skin,
-      tail: S.tail,
+      tail: S.tailCut ? "none" : S.tail,
       state,
       rid: S.solo ? null : S.rid,
       joined: S.solo ? false : S.joined,
@@ -3843,6 +3893,7 @@
       wins: S.wins,
       rc: S.runCoins,
       rg: S.runGems,
+      pw: S.wipes || 0,
       dist: Math.round(S.death ? S.death.dist : S.dist),
       cursor: { x: +(S.cx / W).toFixed(3), y: +(S.cy / H).toFixed(3) }
     };
@@ -3966,6 +4017,7 @@
     }
 
     for (const p of pillarsNear(uMin - 80, uMax + 80, wd)) {
+      if (!demo && S.cleared && S.cleared.has(pillarKey(p))) continue;
       const y = H - (p.u + p.h - dist);
       ctx.save();
       OBSTACLES[p.kind || 0].draw(ctx, p.x - p.w / 2, y, p.w, p.h, now, p.u % 7);
@@ -4106,6 +4158,7 @@
       ctx.restore();
     }
 
+    if (!demo) drawDrops(ctx, dist, now);
     for (const g of gemsNear(uMin - 120, uMax + 120, wd)) {
       if (S.gemsTaken.has(g.id)) continue;
       const ph = gemShow(g, dist);
@@ -4200,7 +4253,7 @@
     const amRacer = S.joined && (S.phase === "racing" || (S.phase === "open" && withinWarmup()));
     if (amRacer) {
       const mine = skinById(S.skin);
-      drawTail(ctx, tailById(S.tail), sagged(S.trail, now, 48), S.color, now);
+      drawTail(ctx, tailById(S.tailCut ? "none" : S.tail), sagged(S.trail, now, 48), S.color, now);
       if (S.phase === "open") {
         ctx.strokeStyle = withA(S.color, .5); ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(S.cx, S.cy, R + 8 + 3 * Math.sin(now / 160), 0, TAU); ctx.stroke();
@@ -4270,7 +4323,11 @@
 
     if (S.phase === "open") {
       if (left <= 4000) {
-        veil.classList.add("thin");
+        /* The lights go up here, painted, not just thinned: the ticker takes
+           a thin veil for one already showing them, so thinning it by hand
+           left the countdown on screen through the lights - and the card
+           saying which power you were dealt never appeared. */
+        if (!veil.classList.contains("thin")) paintVeil();
         if (S.joined) enterFocus(false);
       }
       if (left <= 0) {
@@ -4295,7 +4352,10 @@
           warmCues(S.world);                     // usually done at the gate; this is the catch-up
         }
         while (S.tauntNext < S.taunts.length && t >= S.taunts[S.tauntNext].t) {
-          sfx(S.taunts[S.tauntNext++].which);
+          const which = S.taunts[S.tauntNext++].which;
+          if (S.tauntMute) continue;                    // the MP3 player: not for you
+          sfx(which, S.tauntBoost || 1);
+          S.tauntBoost = 1;                             // the subwoofer spends itself on one
         }
       }
       if (now - hudSpeedAt > 100) {                  // ten times a second is plenty for a readout
@@ -4317,7 +4377,7 @@
           }
           while (S.trail.length && now - S.trail[0][2] > TAIL_LIFE) S.trail.shift();
           if (S.trail.length > 28) S.trail.shift();
-          emitParticles("me", tailById(S.tail), S.color, S.cx, S.dist + H - S.cy, now, 1);
+          emitParticles("me", tailById(S.tailCut ? "none" : S.tail), S.color, S.cx, S.dist + H - S.cy, now, 1);
           const uNow = S.dist + H - S.cy;
           for (const g of gemsNear(uNow - 260, uNow + 260, S.world)) {
             if (S.gemsTaken.has(g.id) || S.gemPending.has(g.id)) continue;
@@ -4325,6 +4385,7 @@
             const dx = S.cx - g.x, dy = (H - (g.u - S.dist)) - S.cy;
             if (dx * dx + dy * dy < (GEM_R + R) * (GEM_R + R)) claimGem(g.id);
           }
+          pickDrops();
           S.entrants = Math.max(S.entrants, roundField().length);
         }
       }
@@ -4351,6 +4412,8 @@
     const onPilotPage = document.body.classList.contains("settings");
     document.body.classList.toggle("lobby", demoBg() && !onPilotPage);
     homeBoard.sync();
+    syncPowerTag();
+    slipDecay();
     // sat at a lobby with nothing running: the veil is covering everything
     document.body.classList.toggle("seated",
       !!S.table && S.phase === "idle" && !onPilotPage);
@@ -4820,14 +4883,15 @@
       { passive: true, once: true }));
 
   let prepareSrc = null;
-  function sfx(which) {
+  function sfx(which, boost) {
     const buf = actx && sfxBuf[which];
     if (isBuf(buf)) {
       if (which === "go" && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }
       const src = actx.createBufferSource();
       src.buffer = buf;
       const g = actx.createGain();
-      g.gain.value = Math.min(1, musicVol * CUE_LEVEL);
+      // a boosted cue is let past the ceiling: that is the whole point of it
+      g.gain.value = boost > 1 ? Math.min(3, musicVol * CUE_LEVEL * boost) : Math.min(1, musicVol * CUE_LEVEL);
       src.connect(g).connect(actx.destination);
       try { src.start(); } catch (e) {}
       if (which === "prepare") prepareSrc = src;
@@ -5323,7 +5387,8 @@
            Somebody watching still gets told that is what they are doing. */
         veil.innerHTML = wrapHTML(
           (S.joined ? "" : '<p class="callout">Watching this one.</p>') +
-          lightsHTML(secs));
+          lightsHTML(secs) +
+          dealtHTML());
         return;
       }
       const pot = roundField().length * ENTRY_FEE;
@@ -5421,12 +5486,14 @@
       '<div class="verdict">' + esc(lobbyName(S.table)) + ' &middot; ' +
         pilotsHere() + (pilotsHere() === 1 ? ' pilot' : ' pilots') + ' here</div>' +
       lobbyFolkHTML() +
+      powersHTML() +
       '<details class="howto"' + (rulesOpen ? " open" : "") + '><summary>How to play</summary>' +
       '<div class="rules">' +
         '<div><b>Guide your cursor</b> down the channel as it scrolls.</div>' +
         '<div><b>Touch a wall, miss a gate, or leave the frame</b> and you are out.</div>' +
         '<div><b>The channel narrows and speeds up</b> the further you get.</div>' +
         '<div><b>Last cursor still inside takes the whole pot.</b></div>' +
+        '<div><b>At the lights you are dealt a power</b> &mdash; rocket, poop, knife, banana, MP3 player or subwoofer, at random, one a race.</div>' +
         '<div><b>Opening a race starts a ' + S.gateSecs + ' second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
         '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
@@ -5447,6 +5514,320 @@
         : "Sign-in data is not available here, so this view runs single player only.") + '</p>' +
       noteLine());
   }
+
+  /* ---------- the powers ----------
+     In multiplayer every pilot is dealt one of five at the lights, at
+     random - the same deal on every screen, since it is drawn from the race
+     and the pilot rather than from dice. The pictures are drawn here, in
+     code, like the cursors: nothing is anybody else's. What each one does
+     in the race is the next thing to build; for now they are dealt and
+     shown. */
+  const POWERS = [{
+    id: "rocket", name: "Rocket",
+    blurb: "Knocks out the next obstacle ahead of you. Only near a milestone, where they stand.",
+    draw(c, s) {
+      c.save(); c.translate(s / 2, s / 2); c.rotate(-Math.PI / 4); c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
+      // flame
+      const fl = c.createLinearGradient(0, s * .22, 0, s * .5);
+      fl.addColorStop(0, "#ffd34d"); fl.addColorStop(1, "#ff5e1f");
+      c.fillStyle = fl; c.beginPath(); c.moveTo(-s * .12, s * .2); c.quadraticCurveTo(0, s * .55, s * .12, s * .2); c.closePath(); c.fill();
+      // fins
+      c.fillStyle = "#ff3d5a";
+      c.beginPath(); c.moveTo(-s * .14, s * .02); c.lineTo(-s * .3, s * .26); c.lineTo(-s * .1, s * .2); c.closePath(); c.fill(); c.stroke();
+      c.beginPath(); c.moveTo(s * .14, s * .02); c.lineTo(s * .3, s * .26); c.lineTo(s * .1, s * .2); c.closePath(); c.fill(); c.stroke();
+      // body
+      c.fillStyle = "#f4f6fb";
+      c.beginPath(); c.moveTo(0, -s * .42); c.bezierCurveTo(s * .22, -s * .2, s * .2, s * .1, s * .14, s * .22);
+      c.lineTo(-s * .14, s * .22); c.bezierCurveTo(-s * .2, s * .1, -s * .22, -s * .2, 0, -s * .42); c.closePath(); c.fill(); c.stroke();
+      // nose
+      c.fillStyle = "#ff3d5a"; c.beginPath(); c.moveTo(0, -s * .42); c.bezierCurveTo(s * .14, -s * .3, s * .17, -s * .2, s * .17, -s * .14);
+      c.lineTo(-s * .17, -s * .14); c.bezierCurveTo(-s * .17, -s * .2, -s * .14, -s * .3, 0, -s * .42); c.closePath(); c.fill(); c.stroke();
+      // window
+      c.fillStyle = "#5fd8ff"; c.beginPath(); c.arc(0, -s * .02, s * .075, 0, Math.PI * 2); c.fill(); c.stroke();
+      c.restore();
+    }
+  }, {
+    id: "poop", name: "Poop",
+    blurb: "Drops one behind you. Whoever runs into it loses the run's coins and gems.",
+    draw(c, s) {
+      c.lineWidth = s * .05; c.strokeStyle = "#2a1408"; c.lineJoin = "round";
+      const g = c.createLinearGradient(0, s * .2, 0, s * .9); g.addColorStop(0, "#9b5b2b"); g.addColorStop(1, "#5a2e10");
+      c.fillStyle = g;
+      const tier = (y, r) => { c.beginPath(); c.ellipse(s / 2, y, r, r * .62, 0, 0, Math.PI * 2); c.fill(); c.stroke(); };
+      tier(s * .78, s * .36); tier(s * .58, s * .29); tier(s * .4, s * .2);
+      // the curl on top
+      c.beginPath(); c.moveTo(s * .44, s * .3); c.quadraticCurveTo(s * .48, s * .08, s * .62, s * .14); c.quadraticCurveTo(s * .56, s * .18, s * .56, s * .3); c.closePath(); c.fill(); c.stroke();
+      // eyes
+      c.fillStyle = "#fff"; c.beginPath(); c.arc(s * .42, s * .6, s * .06, 0, Math.PI * 2); c.arc(s * .58, s * .6, s * .06, 0, Math.PI * 2); c.fill();
+      c.fillStyle = "#2a1408"; c.beginPath(); c.arc(s * .43, s * .61, s * .028, 0, Math.PI * 2); c.arc(s * .59, s * .61, s * .028, 0, Math.PI * 2); c.fill();
+      c.lineWidth = s * .035; c.beginPath(); c.arc(s * .5, s * .68, s * .07, Math.PI * .15, Math.PI * .85); c.stroke();
+    }
+  }, {
+    id: "knife", name: "Knife",
+    blurb: "Drops a blade. Whoever runs into it has their tail cut off.",
+    draw(c, s) {
+      c.save(); c.translate(s / 2, s / 2); c.rotate(-Math.PI / 4); c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
+      // blade
+      const bl = c.createLinearGradient(-s * .1, 0, s * .1, 0); bl.addColorStop(0, "#d9dfe9"); bl.addColorStop(1, "#8f9bb0");
+      c.fillStyle = bl;
+      c.beginPath(); c.moveTo(0, -s * .46); c.quadraticCurveTo(s * .16, -s * .2, s * .1, s * .05); c.lineTo(-s * .1, s * .05); c.lineTo(-s * .1, -s * .3); c.closePath(); c.fill(); c.stroke();
+      // guard and handle
+      c.fillStyle = "#feb703"; c.fillRect(-s * .16, s * .05, s * .32, s * .07); c.strokeRect(-s * .16, s * .05, s * .32, s * .07);
+      c.fillStyle = "#3b2a5a"; c.beginPath(); c.roundRect(-s * .09, s * .12, s * .18, s * .32, s * .05); c.fill(); c.stroke();
+      c.strokeStyle = "#1b1030"; c.lineWidth = s * .03;
+      for (let i = 1; i <= 3; i++) { c.beginPath(); c.moveTo(-s * .09, s * .12 + i * s * .08); c.lineTo(s * .09, s * .12 + i * s * .08); c.stroke(); }
+      c.restore();
+    }
+  }, {
+    id: "mp3", name: "MP3 player",
+    blurb: "Switches the taunts off for you, for the rest of the race.",
+    draw(c, s) {
+      c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
+      // earbuds, behind
+      c.strokeStyle = "#e9eef7"; c.lineWidth = s * .035;
+      c.beginPath(); c.moveTo(s * .5, s * .3); c.quadraticCurveTo(s * .5, s * .06, s * .24, s * .12); c.moveTo(s * .5, s * .3); c.quadraticCurveTo(s * .5, s * .06, s * .76, s * .12); c.stroke();
+      c.fillStyle = "#e9eef7"; c.beginPath(); c.arc(s * .22, s * .13, s * .05, 0, Math.PI * 2); c.arc(s * .78, s * .13, s * .05, 0, Math.PI * 2); c.fill();
+      // the player
+      c.strokeStyle = "#1b1030"; c.lineWidth = s * .05;
+      const g = c.createLinearGradient(0, 0, s, 0); g.addColorStop(0, "#5fd8ff"); g.addColorStop(1, "#1e9fe8");
+      c.fillStyle = g; c.beginPath(); c.roundRect(s * .26, s * .28, s * .48, s * .64, s * .08); c.fill(); c.stroke();
+      c.fillStyle = "#0b1226"; c.beginPath(); c.roundRect(s * .33, s * .35, s * .34, s * .2, s * .03); c.fill();
+      c.fillStyle = "#8ef7ea"; c.fillRect(s * .36, s * .42, s * .12, s * .03); c.fillRect(s * .36, s * .48, s * .2, s * .03);
+      // click wheel
+      c.fillStyle = "#e9eef7"; c.beginPath(); c.arc(s * .5, s * .72, s * .12, 0, Math.PI * 2); c.fill(); c.stroke();
+      c.fillStyle = "#1e9fe8"; c.beginPath(); c.arc(s * .5, s * .72, s * .045, 0, Math.PI * 2); c.fill();
+    }
+  }, {
+    id: "sub", name: "Subwoofer",
+    blurb: "The next taunt plays three times as loud - for everyone but you.",
+    draw(c, s) {
+      c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
+      // sound waves
+      c.strokeStyle = "#feb703"; c.lineWidth = s * .045; c.lineCap = "round";
+      for (const r of [.3, .4]) { c.beginPath(); c.arc(s * .5, s * .56, s * r, -Math.PI * .72, -Math.PI * .28); c.stroke(); }
+      // the box
+      c.strokeStyle = "#1b1030"; c.lineWidth = s * .05;
+      c.fillStyle = "#2a2f45"; c.beginPath(); c.roundRect(s * .14, s * .3, s * .72, s * .62, s * .07); c.fill(); c.stroke();
+      // cone
+      c.fillStyle = "#0b1226"; c.beginPath(); c.arc(s * .5, s * .62, s * .25, 0, Math.PI * 2); c.fill(); c.stroke();
+      const g = c.createRadialGradient(s * .5, s * .62, s * .02, s * .5, s * .62, s * .19); g.addColorStop(0, "#6c7a9c"); g.addColorStop(1, "#1b2238");
+      c.fillStyle = g; c.beginPath(); c.arc(s * .5, s * .62, s * .19, 0, Math.PI * 2); c.fill(); c.stroke();
+      c.fillStyle = "#feb703"; c.beginPath(); c.arc(s * .5, s * .62, s * .06, 0, Math.PI * 2); c.fill(); c.stroke();
+      // a little port
+      c.fillStyle = "#0b1226"; c.beginPath(); c.arc(s * .78, s * .84, s * .035, 0, Math.PI * 2); c.fill();
+    }
+  }, {
+    id: "banana", name: "Banana",
+    blurb: "Drops a peel. Whoever runs into it steers backwards for two seconds: left is right, up is down.",
+    draw(c, s) {
+      c.lineWidth = s * .05; c.strokeStyle = "#3a2a06"; c.lineJoin = "round"; c.lineCap = "round";
+      // the fruit, peeled bare at the top
+      c.fillStyle = "#fff3c4";
+      c.beginPath(); c.moveTo(s * .5, s * .18); c.quadraticCurveTo(s * .62, s * .34, s * .58, s * .52);
+      c.quadraticCurveTo(s * .55, s * .62, s * .42, s * .6); c.quadraticCurveTo(s * .4, s * .36, s * .5, s * .18); c.closePath(); c.fill(); c.stroke();
+      // four peels folded down and out
+      const peel = (x0, y0, cx, cy, x1, y1) => {
+        c.fillStyle = "#ffd93d";
+        c.beginPath(); c.moveTo(s * .5, s * .55); c.quadraticCurveTo(x0 * s, y0 * s, x1 * s, y1 * s);
+        c.quadraticCurveTo(cx * s, cy * s, s * .5, s * .62); c.closePath(); c.fill(); c.stroke();
+      };
+      peel(.22, .58, .3, .78, .14, .86);
+      peel(.78, .58, .7, .78, .86, .86);
+      peel(.34, .68, .42, .82, .36, .92);
+      peel(.66, .68, .58, .82, .64, .92);
+      // the stem end, in the middle, and a brown tip
+      c.fillStyle = "#e0b428"; c.beginPath(); c.arc(s * .5, s * .62, s * .09, 0, Math.PI * 2); c.fill(); c.stroke();
+      c.fillStyle = "#6b4a12"; c.beginPath(); c.arc(s * .5, s * .62, s * .035, 0, Math.PI * 2); c.fill();
+      c.fillStyle = "#8a6a1a"; c.beginPath(); c.arc(s * .5, s * .18, s * .04, 0, Math.PI * 2); c.fill();
+    }
+  }];
+  const powerArtCache = new Map();
+  function powerArt(id, px) {
+    const key = id + "@" + px;
+    let url = powerArtCache.get(key);
+    if (url) return url;
+    const p = POWERS.find(q => q.id === id);
+    const c = document.createElement("canvas"); c.width = c.height = px;
+    const g = c.getContext("2d"); g.lineCap = "round";
+    if (p) p.draw(g, px);
+    url = c.toDataURL("image/png");
+    powerArtCache.set(key, url);
+    return url;
+  }
+  /* the deal: one power per pilot per race, the same on every screen */
+  function powerFor(rid, uid) {
+    if (!rid || !uid) return null;
+    return POWERS[hashStr(rid + ":" + uid) % POWERS.length];
+  }
+  const powerImg = (p, px) => '<img src="' + powerArt(p.id, px) + '" alt="" width="' + px / 2 + '" height="' + px / 2 + '" decoding="async">';
+  function powersHTML() {
+    return '<div class="powers"><div class="head">At the lights every pilot is dealt one of these</div>' +
+      POWERS.map(p => '<div class="power">' + powerImg(p, 88) + '<b>' + esc(p.name) + '</b><span>' + esc(p.blurb) + '</span></div>').join("") +
+    '</div>';
+  }
+  function dealtHTML() {
+    const p = powerFor(S.rid, S.uid || S.me);
+    if (!p || !S.joined || S.solo) return "";        // multiplayer only: alone there is nobody to use one on
+    return '<div class="dealt">' + powerImg(p, 104) + '<div><b>You got the <em>' + esc(p.name) + '</em></b>' + esc(p.blurb) + '</div></div>';
+  }
+  /* the tag in the frame during a multiplayer race: what you hold */
+  let powerTagFor = "";
+  function syncPowerTag() {
+    const tag = $("powerTag");
+    const p = (S.phase === "racing" && !S.solo && S.joined) ? powerFor(S.rid, S.uid || S.me) : null;
+    const key = p ? S.rid + ":" + p.id : "";
+    if (key === powerTagFor) return;
+    powerTagFor = key;
+    if (!p) { tag.hidden = true; tag.innerHTML = ""; return; }
+    tag.innerHTML = powerImg(p, 60) + '<span>' + esc(p.name) + '<br><small>' + (TOUCH ? "tap to use" : "click or space to use") + '</small></span>';
+    tag.classList.toggle("used", !!S.powerUsed);
+    tag.hidden = false;
+  }
+  const tagNote = t => { const el = $("powerTag").querySelector("small"); if (el) el.textContent = t; };
+  let noteTimer = 0;
+  function hudNote(kind, text) {
+    const el = $("powerNote");
+    el.innerHTML = (kind ? powerImg(POWERS.find(p => p.id === kind) || POWERS[0], 44) : "") + esc(text);
+    el.hidden = false;
+    clearTimeout(noteTimer);
+    noteTimer = setTimeout(() => { el.hidden = true; }, 4000);
+  }
+
+  /* ---------- what the powers do ----------
+     One use each, in a multiplayer race, while still flying. The rocket and
+     the MP3 player act on your own screen alone. Poop, knife and the
+     subwoofer go through the table room as events, the way a gem claim does:
+     a drop lands on every screen at the spot it was left, and the first
+     pilot whose pick comes back takes what it does. The run's coins and gems
+     are reported to the server as counts that only ever grew; a wipe is sent
+     as a count of wipes beside them, so the server knows to start over. */
+  const DROP_R = 18;
+  const pillarKey = p => p.u + ":" + p.x;
+  function resetPowers() {
+    S.powerUsed = false; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false;
+    S.tauntMute = false; S.tauntBoost = 1; S.wipes = 0; S.slipUntil = 0; S.slipOff = { x: 0, y: 0 };
+    $("powerTag").classList.remove("used"); $("powerNote").hidden = true;
+  }
+  function burst(x, u, col, n) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * TAU, sp = 110 * (0.3 + Math.random() * 0.7);
+      PARTS.push({ x, u, vx: Math.cos(a) * sp, vu: Math.sin(a) * sp, born: performance.now(), life: 800, size: 3,
+                   col, grow: false, twinkle: false, fall: false });
+    }
+  }
+  function usePower() {
+    if (S.phase !== "racing" || S.solo || !S.joined || S.powerUsed || !S.cleared) return;
+    const p = powerFor(S.rid, S.uid || S.me);
+    if (!p) return;
+    const uNow = S.dist + H - S.cy;
+    if (p.id === "rocket") {
+      let best = null;
+      for (const q of pillarsNear(uNow, uNow + H * 1.5, S.world)) {
+        if (q.u + q.h < uNow || S.cleared.has(pillarKey(q))) continue;
+        if (!best || q.u < best.u) best = q;
+      }
+      if (!best) { tagNote("nothing ahead to hit - save it for a milestone"); return; }
+      S.cleared.add(pillarKey(best));
+      burst(best.x, best.u + best.h / 2, "#ffb347", 30);
+      tagNote("obstacle cleared");
+    } else if (p.id === "poop" || p.id === "knife" || p.id === "banana") {
+      const id = p.id + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
+      const d = { op: "drop", id, kind: p.id, u: Math.round(uNow), x: Math.round(S.cx) };
+      S.drops.set(id, { id, kind: p.id, u: d.u, x: d.x, by: "me" });      // the relay brings it back; the id keeps it one
+      if (S.tableRoom) S.tableRoom.emit("power", d).catch(() => {});
+      tagNote({ poop: "dropped - whoever is behind you, beware", knife: "dropped - a tail is coming off", banana: "dropped - somebody is about to steer backwards" }[p.id]);
+    } else if (p.id === "mp3") {
+      S.tauntMute = true;
+      tagNote("taunts off for you");
+    } else if (p.id === "sub") {
+      if (S.tableRoom) S.tableRoom.emit("power", { op: "boom" }).catch(() => {});
+      tagNote("the next taunt hits them hard");
+    }
+    S.powerUsed = true;
+    $("powerTag").classList.add("used");
+  }
+  /* what a drop does to whoever runs into it */
+  function sufferDrop(it) {
+    if (it.kind === "poop") {
+      const c = S.runCoins, g = S.runGems;
+      S.runCoins = 0; S.runGems = 0; S.wipes = (S.wipes || 0) + 1;
+      if (!S.serverLedger) { S.coins = Math.max(0, S.coins - c); S.gems = Math.max(0, S.gems - g); saveProfile(); }
+      $("coinNow").textContent = "0"; $("gemNow").textContent = "0";
+      burst(S.cx, S.dist + H - S.cy, "#7a4a1e", 24);
+      hudNote("poop", "You stepped in it: the run's coins and gems are gone.");
+    } else if (it.kind === "banana") {
+      S.slipUntil = performance.now() + 2000;
+      burst(S.cx, S.dist + H - S.cy, "#ffd93d", 18);
+      hudNote("banana", "Banana! Your steering is backwards for two seconds.");
+    } else {
+      S.tailCut = true;
+      burst(S.cx, S.dist + H - S.cy, "#d9dfe9", 18);
+      hudNote("knife", "Your tail has been cut off.");
+    }
+    pushPresence(true);
+  }
+  function onPower(msg) {
+    const d = msg && msg.data;
+    if (!d || !S.drops) return;
+    if (d.op === "drop") {
+      const id = String(d.id || "");
+      if (!/^(poop|knife|banana)-[a-z0-9-]{4,40}$/.test(id) || S.drops.has(id)) return;
+      S.drops.set(id, { id, kind: id.split("-")[0], u: Number(d.u) || 0, x: Number(d.x) || 0,
+                        by: msg.sameTab ? "me" : msg.peer });
+    } else if (d.op === "pick") {
+      const it = S.drops.get(String(d.id || ""));
+      if (!it || it.gone) return;
+      it.gone = true;
+      if (msg.sameTab && S.phase === "racing") sufferDrop(it);   // mine came back first: it lands on me
+    } else if (d.op === "boom") {
+      if (!msg.sameTab && S.phase === "racing") { S.tauntBoost = 3; hudNote("sub", "Somebody turned the subwoofer up. Brace for the next taunt."); }
+    }
+  }
+  /* A banana underfoot: for two seconds every move of the hand goes the
+     other way. A mouse points at a spot, so reversing it means the cursor
+     sits at the pointer plus an offset that grows the wrong way with every
+     move; when the two seconds are up the offset eases back to nothing over
+     the next few frames, so the cursor glides home rather than jumping. */
+  const slipping = () => S.slipUntil > performance.now();
+  let lastPt = null;
+  function slipDecay() {
+    const o = S.slipOff;
+    if (!o || slipping() || (!o.x && !o.y)) return;
+    const dx = o.x * 0.18, dy = o.y * 0.18;
+    o.x -= dx; o.y -= dy;
+    if (Math.abs(o.x) < 0.3 && Math.abs(o.y) < 0.3) { o.x = 0; o.y = 0; }
+    S.cx = Math.max(R, Math.min(W - R, S.cx - dx)); S.cy = Math.max(R, Math.min(H - R, S.cy - dy));
+  }
+  function pickDrops() {
+    if (!S.drops) return;
+    for (const it of S.drops.values()) {
+      if (it.gone || it.claiming || it.by === "me") continue;
+      const dx = S.cx - it.x, dy = (H - (it.u - S.dist)) - S.cy;
+      if (dx * dx + dy * dy < (DROP_R + R) * (DROP_R + R)) {
+        it.claiming = true;
+        if (S.tableRoom) S.tableRoom.emit("power", { op: "pick", id: it.id }).catch(() => { it.claiming = false; });
+      }
+    }
+  }
+  function drawDrops(c, dist, now) {
+    if (!S.drops) return;
+    for (const it of S.drops.values()) {
+      const y = H - (it.u - dist);
+      if (y > H + 240) { S.drops.delete(it.id); continue; }
+      if (it.gone || y < -40) continue;
+      const pic = art(powerArt(it.kind, 64)).still;
+      if (!pic || !pic.naturalWidth) continue;
+      c.save(); c.translate(it.x, y);
+      if (it.kind === "knife") c.rotate(now / 500);
+      c.drawImage(pic, -DROP_R, -DROP_R, DROP_R * 2, DROP_R * 2);
+      c.restore();
+    }
+  }
+  $("powerTag").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); usePower(); });
+  stage.addEventListener("pointerdown", e => { if (e.pointerType === "mouse" && e.button === 0) usePower(); });
+  addEventListener("keydown", e => {
+    if (e.code === "Space" && S.phase === "racing" && !S.solo) { e.preventDefault(); usePower(); }
+  });
 
   /* three lamps counting down: red at 3, amber at 2, green at 1, then go */
   function lightsHTML(secs) {
