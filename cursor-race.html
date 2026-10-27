@@ -1355,8 +1355,22 @@
      billboard.cursorclash.com (loadBoards, below), and the Billboard screen
      is generated from this list, so a board can never be up without a name
      against it. With nothing sold, every board shows the desk's own
-     placeholder. */
+     placeholder.
+
+     There are no slots: any number of ads can be up at once, and each board
+     a player passes draws one of them - its own draw, not the world's, so two
+     pilots in the same race see different ads on the same bend, and every ad
+     is seen by somebody. The draw is weighted: the desk sends a weight with
+     each ad, higher for the ones falling behind on sightings, so over a day
+     they all come out about even. */
   const SPONSORS = [];
+  function drawSponsor() {
+    let total = 0;
+    for (const a of SPONSORS) total += a.weight;
+    let r = Math.random() * total;
+    for (const a of SPONSORS) { r -= a.weight; if (r <= 0) return a; }
+    return SPONSORS[SPONSORS.length - 1];
+  }
 
   /* A hoarding wants a bend to stand on: on a straight there is nowhere for it
      to be except in the way, and the player never turns their head. So one is
@@ -1381,7 +1395,7 @@
         u, side,
         x: centerX(u, wd) + side * (halfW(u) + 30),
         w: 248, h: 96,                         // a big board: it is meant to be read at speed
-        who: SPONSORS.length ? SPONSORS[Math.floor(rnd() * SPONSORS.length)] : null,
+        who: SPONSORS.length ? drawSponsor() : null,
         phase: rnd()
       });
     }
@@ -1694,10 +1708,10 @@
   })();
 
   /* The boards are sold at the desk. The server hands the page what is up,
-     with the pictures from its own origin, and the page swaps the table in
-     place: the seeded picks are redone so every pilot picks the same from the
-     same list. Nothing up, or nothing to ask - the artifact has no server -
-     and the boards show the placeholder. */
+     with the pictures from its own origin and a weight each, and the page
+     swaps the table in place and redraws the boards from it. Nothing up, or
+     nothing to ask - the artifact has no server - and the boards show the
+     placeholder. */
   let boardsSig = "";
   async function loadBoards() {
     try {
@@ -1705,12 +1719,13 @@
       if (!r.ok) return;
       const list = await r.json();
       if (!Array.isArray(list)) return;
-      const sig = list.map(a => a.id).join(",");
+      const sig = list.map(a => a.id + ":" + Math.round((Number(a.weight) || 1) * 20)).join(",");
       if (sig === boardsSig) return;
       boardsSig = sig;
       const next = list.length
         ? list.map(a => ({ id: String(a.id), name: String(a.name || "").slice(0, 40), what: "On the boards",
-                           url: /^https?:\/\//.test(String(a.link)) ? String(a.link) : "", art: String(a.image) }))
+                           url: /^https?:\/\//.test(String(a.link)) ? String(a.link) : "", art: String(a.image),
+                           weight: Math.min(10, Math.max(0.05, Number(a.weight) || 1)) }))
         : [];
       SPONSORS.length = 0; SPONSORS.push(...next);
       boardCache.clear();
@@ -5041,7 +5056,7 @@
       if (dead || stage || !wanted()) { sync(); return; }
       stage = buildBoard(THREE, host, $("hbLink"));
       if (!stage) { dead = true; sync(); return; }
-      at = -1; next(); timer = setInterval(next, 6000);
+      at = Math.floor(Math.random() * Math.max(1, SPONSORS.length)) - 1; next(); timer = setInterval(next, 6000);
     }
     function unmount() { clearInterval(timer); stage.dispose(); stage = null; }
     function next() {

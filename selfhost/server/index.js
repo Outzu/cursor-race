@@ -225,7 +225,8 @@ async function pullBoards() {
         } catch (e) { continue; }
       }
       next.push({ id: a.id, name: String(a.name || "").slice(0, 40),
-                  link: /^https?:\/\//.test(String(a.link)) ? String(a.link).slice(0, 300) : "", animated: !!a.animated });
+                  link: /^https?:\/\//.test(String(a.link)) ? String(a.link).slice(0, 300) : "", animated: !!a.animated,
+                  weight: Math.min(10, Math.max(0.05, Number(a.weight) || 1)) });
     }
     boards = next;
     for (const id of [...boardPics.keys()]) if (!next.some(a => a.id === id)) boardPics.delete(id);
@@ -827,7 +828,7 @@ const server = http.createServer((req, res) => {
      refuses the eleventh pilot from the page before the server ever sees them. */
   if (url.pathname === "/api/boards") {
     res.writeHead(200, { "content-type": MIME[".json"], "cache-control": "public, max-age=60" });
-    res.end(JSON.stringify(boards.map(a => ({ id: a.id, name: a.name, link: a.link, animated: a.animated, image: "/api/boards/img/" + a.id + ".webp" }))));
+    res.end(JSON.stringify(boards.map(a => ({ id: a.id, name: a.name, link: a.link, animated: a.animated, weight: a.weight, image: "/api/boards/img/" + a.id + ".webp" }))));
     return;
   }
   const boardPic = /^\/api\/boards\/img\/([a-zA-Z0-9]+)\.webp$/.exec(url.pathname);
