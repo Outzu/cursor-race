@@ -307,7 +307,6 @@
   /* the pilot page: wallet, pilot and gear only, no playfield */
   body.settings .veil,
   body.settings .stagewrap,
-  body.settings #betCard,
   body.settings .scroller { display: none; }
   body.settings .app { justify-content: center; }
   body.settings .rail {
@@ -639,7 +638,7 @@
   }
 
   /* the pilot's chosen cursor is set on <html>, so controls inherit it */
-  button, input[type="text"], .betrow, .stake, .sw, .skin { cursor: inherit; }
+  button, input[type="text"], .sw, .skin { cursor: inherit; }
   button {
     font: inherit;
     border: 0;
@@ -1043,32 +1042,6 @@
   .scroller { display: flex; flex-direction: column; }
   .scroller .grid-list { max-height: 208px; }
 
-  .betrow {
-    display: grid;
-    grid-template-columns: 10px 1fr auto;
-    gap: 9px;
-    align-items: center;
-    width: 100%;
-    padding: 7px;
-    border-radius: 3px;
-    background: color-mix(in srgb, var(--wall) 55%, transparent);
-    color: var(--ink);
-    font-size: 13px;
-    text-align: left;
-  }
-  .betrow:hover:not(:disabled) { background: color-mix(in srgb, var(--aqua) 16%, transparent); }
-  .betrow:disabled { opacity: .4; cursor: default; }
-  .betrow .odds { font-family: var(--data); font-size: 11px; color: var(--aqua); }
-  .stakes { display: flex; gap: 6px; margin-bottom: 9px; }
-  .stake {
-    flex: 1;
-    padding: 6px;
-    background: color-mix(in srgb, var(--wall) 55%, transparent);
-    color: var(--dim);
-    font-family: var(--data);
-    font-size: 12px;
-  }
-  .stake[aria-pressed="true"] { background: var(--aqua); color: var(--void); font-weight: 600; }
   .hint {
     font-family: var(--data);
     font-size: 10px;
@@ -1173,13 +1146,6 @@
         <div class="cr"><b id="coinNum">100</b><em>coins</em></div>
         <div class="co"><b id="gemNum">0</b><em>gems</em></div>
       </div>
-    </div>
-
-    <div class="card" id="betCard" hidden>
-      <h2><span>Bet on a pilot</span><span id="betState"></span></h2>
-      <div class="stakes" id="stakes"></div>
-      <div class="grid-list" id="betList"></div>
-      <div class="hint" id="betHint">pays stake x entrants if they win</div>
     </div>
 
     <div class="card">
@@ -1294,7 +1260,6 @@
   const tidyCode = v => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 8);
   let ENTRY_FEE = 10;
   let START_COINS = 100;
-  let STAKES = [5, 10, 25];
   const RESULT_HOLD = 9000;
 
   const COLORS = ["#00c7fd", "#feb703", "#ff5470", "#9b8cff", "#6ee36a", "#ff8ad4", "#58b4ff", "#ffe66b"];
@@ -2875,8 +2840,6 @@
     trail: [],
     death: null,
     joined: false,
-    bet: null,            // {on, amt}
-    stake: STAKES[1],
     settled: false,
     lastOne: null,          // who outlived the field, once that is known
     lastRow: null,          // and what we last saw of them, should they vanish
@@ -3313,7 +3276,7 @@
     S.peers = [];
     S.table = null;
     S.lobbyMeta = null;
-    S.round = null; S.rid = null; S.joined = false; S.bet = null;
+    S.round = null; S.rid = null; S.joined = false;
     S.phase = "idle"; S.result = null; S.death = null; S.dist = 0;
     exitFocus();
     pushLobbyPresence();
@@ -3359,7 +3322,7 @@
     S.world = makeWorld(rid);
     warmCues(S.world);
     S.phase = "open";
-    S.joined = false; S.bet = null; S.settled = false; S.result = null; S.lastOne = null; S.lastRow = null;
+    S.joined = false; S.settled = false; S.result = null; S.lastOne = null; S.lastRow = null;
     S.death = null; S.dist = 0; S.trail = []; S.runCoins = 0; S.gatesPassed = 0;
     S.newUnlocks = []; S.entrants = 0; S.clearAt = 0; S.newRecord = false; S.litCheck = false;
     ghostTrails.clear(); ghostPaths.clear(); ghostHeads.clear(); PARTS.length = 0; lastSpark.clear();
@@ -3395,7 +3358,7 @@
   }
 
   function backToIdle() {
-    S.phase = "idle"; S.rid = null; S.joined = false; S.bet = null; S.lastOne = null; S.lastRow = null;
+    S.phase = "idle"; S.rid = null; S.joined = false; S.lastOne = null; S.lastRow = null;
     S.death = null; S.result = null; S.dist = 0; S.solo = false;
     exitFocus();
     pushPresence(true);
@@ -3487,7 +3450,6 @@
     if (Date.now() > S.round.startsAt - 300) { say("the gate has closed"); return; }
     if (S.coins < ENTRY_FEE) { say("not enough coins for the " + ENTRY_FEE + " entry"); return; }
     S.joined = true;
-    S.bet = null;
     if (S.serverLedger) { pushPresence(true); setTimeout(refreshBalance, 900); }
     else { S.coins -= ENTRY_FEE; saveProfile(); pushPresence(true); }
     paintVeil(); paintRail();
@@ -3496,7 +3458,7 @@
   function soloRun() {
     if (S.phase === "racing" || S.phase === "watching") return;
     const rid = "p" + Math.random().toString(36).slice(2, 9);
-    S.solo = true; S.joined = true; S.round = null; S.bet = null; S.settled = true;
+    S.solo = true; S.joined = true; S.round = null; S.settled = true;
     S.rid = rid; S.world = makeWorld(rid);
     warmCues(S.world);
     /* Nobody else is watching a single-player run, so the server times it and
@@ -3563,32 +3525,6 @@
     }
     return [...byId.values()];
   }
-  function watcherBets() {
-    return S.peers
-      .filter(p => p.presence && p.presence.rid === S.rid && p.presence.bet && p.presence.bet.on)
-      .map(p => ({
-        isMe: p.sameTab,
-        name: String(p.presence.who || "watcher").slice(0, 14),
-        on: String(p.presence.bet.on),
-        amt: Math.max(0, Number(p.presence.bet.amt) || 0)
-      }));
-  }
-
-  /* ---------- betting ---------- */
-  function placeBet(peerId) {
-    if (S.joined || S.bet) return;
-    if (S.phase !== "open" && S.phase !== "watching") return;
-    const amt = S.stake;
-    if (S.coins < amt) { say("not enough coins for a " + amt + " coin bet"); return; }
-    const target = roundField().find(p => p.peer === peerId);
-    if (!target || (!target.racing && !target.pending)) { say("that pilot is already out"); return; }
-    if (S.uid && target.uid === S.uid) { say("you cannot back yourself"); return; }
-    S.bet = { on: peerId, amt };
-    if (S.serverLedger) { pushPresence(true); setTimeout(refreshBalance, 900); }
-    else { S.coins -= amt; saveProfile(); pushPresence(true); }
-    paintRail(); paintVeil();
-  }
-
   /* ---------- round resolution ---------- */
   function resolveRound() {
     if (S.settled) return;
@@ -3619,11 +3555,9 @@
     if (!winner) winner = field.slice().sort((a, b) => b.dist - a.dist)[0];
     const n = Math.max(S.entrants, field.length);
     const pot = S.solo ? 0 : n * ENTRY_FEE;
-    let gain = 0, betWon = 0;
+    let gain = 0;
     if (!S.solo && S.joined && winner && winner.isMe) { gain = pot; S.wins += 1; }
-    const backed = S.bet ? field.find(p => p.peer === S.bet.on) : null;
-    if (!S.solo && backed && winner && backed.uid === winner.uid) betWon = S.bet.amt * n;
-    if (!S.serverLedger) S.coins += gain + betWon;
+    if (!S.serverLedger) S.coins += gain;
     S.settled = true;
     S.phase = "over";
     // the winner outlived the field, so they are ahead even if their
@@ -3636,7 +3570,7 @@
       winner: winner ? winner.name : "nobody",
       iWon: !!(winner && winner.isMe && S.joined && !S.solo),
       rank: winner && winner.isMe ? 1 : ahead + 1,
-      of: n, pot, gain, betWon,
+      of: n, pot, gain,
       best: winner ? winner.dist : 0
     };
     if (S.joined) recordRun(Math.round((S.death ? S.death.dist : S.dist) / 10));
@@ -3945,7 +3879,6 @@
       state,
       rid: S.solo ? null : S.rid,
       joined: S.solo ? false : S.joined,
-      bet: S.bet ? { on: S.bet.on, amt: S.bet.amt } : null,
       wins: S.wins,
       rc: S.runCoins,
       rg: S.runGems,
@@ -4371,8 +4304,8 @@
   /* ---------- loop ---------- */
   let lastRail = 0, lastBusy = false, lastFocus = false, lastPhase = null;
   // Logic is clock-driven and idempotent, so it can run from the animation frame
-  // and from a timer — the timer keeps the lobby clock, the round result and bet
-  // settlement moving even when a background tab stops painting.
+  // and from a timer — the timer keeps the lobby clock and the round result
+  // moving even when a background tab stops painting.
   function step(now) {
     const left = msToStart();
 
@@ -4700,10 +4633,6 @@
     const coins = num(r.startCoins, 0, 1e7);   if (coins !== null) START_COINS = coins;
     const gate = num(r.joinWindow, 3000, 300000);
     if (gate !== null) { JOIN_WINDOW = gate; S.gateSecs = Math.max(1, Math.round(gate / 1000)); }
-    if (Array.isArray(r.stakes) && r.stakes.length &&
-        r.stakes.every(x => typeof x === "number" && isFinite(x) && x > 0)) {
-      STAKES = r.stakes.slice(0, 6).map(Math.round);
-    }
     paintVeil(); paintRail();
   }
 
@@ -5484,11 +5413,11 @@
           (S.joined
             ? '<button class="go" disabled>Seat confirmed</button>'
             : '<button class="go" data-act="join">Join &middot; ' + ENTRY_FEE + ' coins</button>') +
-          (S.joined ? '' : '<button class="go ghost" data-act="watch">Watch and bet</button>') +
+          (S.joined ? '' : '<button class="go ghost" data-act="watch">Just watch</button>') +
         '</div>' +
         '<p>' + (S.joined
           ? "You are in. The channel opens when the clock hits zero."
-          : "Confirm a seat before the clock runs out, or sit this one out and bet on a pilot from the rail.") + '</p>' +
+          : "Confirm a seat before the clock runs out, or sit this one out and watch.") + '</p>' +
         '<div id="accountSlot"></div>' +
         noteLine());
       return;
@@ -5499,13 +5428,11 @@
       const m = Math.round((S.death ? S.death.dist : S.dist) / 10);
       const unlocked = S.newUnlocks.length
         ? '<div class="unlocked-note">new cursor: ' + esc(S.newUnlocks.join(", ")) + '</div>' : '';
-      const betLine = r && r.betWon ? " Your bet paid " + r.betWon + " coins."
-        : (S.bet ? " Your bet lost " + S.bet.amt + " coins." : "");
       let head, verdict, detail;
       if (S.solo) {
         head = String(m);
         verdict = (S.death ? esc(S.death.why) : "out") + " at " + m + " m";
-        detail = "Single player. Nothing staked, and the run is yours to keep.";
+        detail = "Single player. No entry, no pot, and the run is yours to keep.";
       } else if (r && r.iWon) {
         head = "LAST<br><span class='race'>POINTER</span>";
         verdict = "you took the pot";
@@ -5513,7 +5440,7 @@
       } else if (r && !S.joined) {
         head = String(Math.round(r.best / 10));
         verdict = esc(r.winner) + " took the pot";
-        detail = "A " + r.pot + " coin pot from " + r.of + " entrants." + betLine;
+        detail = "A " + r.pot + " coin pot from " + r.of + " entrants.";
       } else if (r) {
         head = String(m);
         verdict = (S.death ? esc(S.death.why) : "out") + " at " + m + " m";
@@ -5577,7 +5504,6 @@
         '<div><b>At the lights you are dealt a power</b> &mdash; rocket, poop, knife, banana, MP3 player or subwoofer, at random.</div>' +
         '<div><b>A ? coin in the channel gives another</b>, at random. They queue up; a click uses the first in hand.</div>' +
         '<div><b>Opening a race starts a ' + S.gateSecs + ' second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
-        '<div><b>Not racing? Bet on a pilot</b> while the race runs; a winning pick pays your stake times the field.</div>' +
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
         '<div><b>Single player pays the same</b> &mdash; no entry, no pot, but the gates and gems are yours.</div>' +
         '<div><b>Gems appear in the channel</b> &mdash; first cursor to touch one takes it. Gems buy tails.</div>' +
@@ -6235,7 +6161,7 @@
     if (a === "open") openRace();
     else if (a === "join") joinRace();
     else if (a === "solo") soloRun();
-    else if (a === "watch") { say("sitting this one out - bets are in the rail"); document.body.classList.add("hideveil"); }
+    else if (a === "watch") { say("sitting this one out"); document.body.classList.add("hideveil"); }
     else if (a === "hide") document.body.classList.add("settings");
     else if (a === "terms") openTerms();
     else if (a === "boards") openBoards();
@@ -6354,44 +6280,6 @@
       : S.table ? lobbyName(S.table).toLowerCase() + " / last cursor standing"
       : "last cursor standing";
 
-    // betting panel: only for people not in the race, while one is live
-    const decided = raceDecided();
-    const canBet = !S.joined && !S.solo && !decided &&
-      (S.phase === "open" || S.phase === "watching");
-    // a stake already laid still wants watching, even once it is decided
-    const showBetCard = canBet || (decided && !!S.bet);
-    const betCard = $("betCard");
-    betCard.hidden = !showBetCard;
-    if (decided && !canBet) {
-      $("betState").textContent = S.bet ? "staked " + S.bet.amt + " · decided" : "decided";
-      $("stakes").dataset.h = ""; $("stakes").innerHTML = "";
-    } else if (canBet) {
-      $("betState").textContent = S.bet ? "staked " + S.bet.amt
-        : S.phase === "watching" ? "race running" : "pick one";
-      const stakeHTML = STAKES.map(v =>
-        '<button class="stake" data-stake="' + v + '" aria-pressed="' + (v === S.stake) + '"' +
-        (S.bet ? " disabled" : "") + '>' + v + '</button>').join("");
-      if ($("stakes").dataset.h !== stakeHTML) { $("stakes").dataset.h = stakeHTML; $("stakes").innerHTML = stakeHTML; }
-      const f = roundField();
-      const n = Math.max(f.length, 1);
-      const rows = f.map(p => {
-        const dead = !p.racing && !p.pending;
-        const picked = S.bet && S.bet.on === p.peer;
-        return '<button class="betrow" data-bet="' + esc(p.peer) + '"' +
-          (S.bet || dead ? " disabled" : "") + '>' +
-          '<span class="chip" style="background:' + esc(p.color) + '"></span>' +
-          '<span class="nm">' + esc(p.name) + (picked ? " (your pick)" : "") + '</span>' +
-          '<span class="odds">' + (dead ? "out" : "x" + n) + '</span></button>';
-      }).join("");
-      const html = rows || '<div class="empty">No pilots yet.</div>';
-      if ($("betList").dataset.h !== html) { $("betList").dataset.h = html; $("betList").innerHTML = html; }
-      $("betHint").textContent = S.bet
-        ? "returns " + (S.bet.amt * n) + " coins if your pick wins"
-        : S.phase === "watching"
-          ? "race in progress - back a pilot still flying"
-          : "pays stake x " + n + " if your pick wins";
-    }
-
     // standings / roster
     const field = roundField();
     if (document.body.classList.contains("focus")) {
@@ -6406,14 +6294,10 @@
 
     let rows, title, count;
     if (S.rid && field.length) {
-      const bets = watcherBets();
       rows = field.slice().sort((a, b) => b.dist - a.dist).map(p => {
-        const backers = bets.filter(b => b.on === p.peer);
-        const staked = backers.reduce((s, b) => s + b.amt, 0);
         return '<div class="row' + (p.isMe ? " me" : "") + (p.racing || p.pending ? "" : " out") + '">' +
           '<span class="chip" style="background:' + esc(p.color) + '"></span>' +
-          '<span class="nm">' + esc(p.name) + (p.isMe ? " (you)" : "") +
-            (staked ? ' <span class="val">' + staked + ' on</span>' : '') + '</span>' +
+          '<span class="nm">' + esc(p.name) + (p.isMe ? " (you)" : "") + '</span>' +
           '<span class="val"><b>' + Math.round(p.dist / 10) + '</b> m</span></div>';
       });
       title = "This race"; count = field.filter(p => p.racing || p.pending).length + " in";
@@ -6444,18 +6328,6 @@
     const html = rows.join("") || '<div class="empty">Nobody here yet.</div>';
     if (board.dataset.h !== html) { board.dataset.h = html; board.innerHTML = html; }
   }
-
-  $("stakes").addEventListener("click", e => {
-    const b = e.target.closest("[data-stake]");
-    if (!b || b.disabled) return;
-    S.stake = Number(b.dataset.stake) || STAKES[1];
-    paintRail();
-  });
-  $("betList").addEventListener("click", e => {
-    const b = e.target.closest("[data-bet]");
-    if (!b || b.disabled) return;
-    placeBet(b.dataset.bet);
-  });
 
   /* ---------- identity controls ---------- */
   function loadLocal() {

@@ -43,6 +43,5 @@ module.exports = {
   ENTRY_FEE: Number(process.env.ENTRY_FEE || 10),
   START_COINS: Number(process.env.START_COINS || 100),
   RESULT_HOLD: Number(process.env.RESULT_HOLD || 9000),
-  TABLE_CAP: Number(process.env.TABLE_CAP || 10),
-  STAKES: [5, 10, 25]
+  TABLE_CAP: Number(process.env.TABLE_CAP || 10)
 };

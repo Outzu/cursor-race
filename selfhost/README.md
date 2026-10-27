@@ -40,7 +40,7 @@ server/game.js           rules the server and client must agree on
 ## Two currencies
 
 **Coins** are earned one per gate cleared. They pay the 10-coin race entry, form the winner's
-pot, are what watchers stake on a bet, and buy cursor designs.
+pot, and buy cursor designs.
 
 **Gems** are picked up on the channel. They appear in the corridor — some scrolling in from
 the top, some blinking into existence already in view — and the first cursor to touch one
@@ -74,7 +74,7 @@ Concretely:
   name, colour, which table, whether that table is mid-race — and changes a few times a
   minute.
 - A **table room** (`cursorrace-t3`) carries the race itself: cursors at ~20/s, distances,
-  seats, bets. Only the players at that table receive it.
+  seats. Only the players at that table receive it.
 - Each table has its own round document (`live/t3`) and its own lease (`locks/t3`), so six
   races can be opening, running and settling independently.
 
@@ -96,8 +96,8 @@ The split matters, so it is worth being exact.
   clock and writes the round document. Every client reads that one document, so the countdown
   and the start are the same for everyone regardless of how wrong their own clock is.
 - **Every coin that moves between players.** `wallets/<uid>` holds the server's running
-  ADJUSTMENT, not a balance: −10 when it first sees you claim a seat, −stake when it sees a
-  bet, +pot to the winner, +stake×field to a winning bet. What a player is shown is
+  ADJUSTMENT, not a balance: −10 when it first sees you claim a seat, +pot to the winner.
+  What a player is shown is
   `coins they report earning + that adjustment`. A read adds it on and a write takes it back
   off, so the two halves never double-count, and the zero-sum flows stay the server's alone
   even though earning happens on the client. Writes to another player's drawer are refused
@@ -109,7 +109,7 @@ The split matters, so it is worth being exact.
 
 - **How many coins and gems you earn.** Gates and gem pickups are counted on the client.
   Inflating them buys cursors and tails you did not earn, and lets you pay entry fees you did
-  not earn — but bets are capped at 25 a race, so the damage per race is bounded.
+  not earn — the pot is the seats, so the damage per race is bounded by the entry fee.
 - **Where your cursor is.** Positions are relayed, not refereed.
 
 ### The cheat that is still open

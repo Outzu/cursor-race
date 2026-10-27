@@ -494,8 +494,7 @@ function openRound(table, rid, host) {
   const r = {
     table, rid, host, settled: false,
     startsAt: now + G.JOIN_WINDOW,
-    entrants: new Map(),   // uid -> { peer, name, dist, state, paid }
-    bets: new Map()        // uid -> { on, amt, paid }
+    entrants: new Map()    // uid -> { peer, name, dist, state, paid }
   };
   rounds.set(table, r);
   store.set("live/" + table, { rid, startsAt: r.startsAt, serverNow: now, host, gate: G.JOIN_WINDOW });
@@ -503,7 +502,7 @@ function openRound(table, rid, host) {
 }
 
 /* Presence is the only thing the clients report, so the ledger reads it:
-   a seat is charged the first time a player claims one, a bet when it appears. */
+   a seat is charged the first time a player claims one. */
 function ledger(uid, pres, peerId, table) {
   const r = rounds.get(table);
   if (!r || !pres || pres.rid !== r.rid) return;
@@ -534,22 +533,6 @@ function ledger(uid, pres, peerId, table) {
     }
     return;
   }
-
-  const bet = pres.bet;
-  if (bet && typeof bet.on === "string" && !r.bets.has(uid)) {
-    const amt = Math.round(Number(bet.amt) || 0);
-    if (!G.STAKES.includes(amt)) return;
-    if (balance(uid) < amt) return;
-    if (r.settled) return;
-    if (r.lastOne) return;                  // decided; nothing left to back
-    // resolve the backed tab to a player now, while that peer is still around,
-    // so a second tab of your own cannot be backed and cannot pay you out
-    const target = peers.get(bet.on);
-    const onUid = target ? target.uid : null;
-    if (!onUid || onUid === uid) return;
-    r.bets.set(uid, { on: bet.on, onUid, amt, paid: true });
-    move(uid, -amt, "bet " + r.rid);
-  }
 }
 
 function settle(r) {
@@ -573,15 +556,11 @@ function settle(r) {
     if (rg) move(e.uid, rg, "gems " + r.rid, "gems");
   }
   if (winner) move(winner.uid, pot, "pot " + r.rid);
-  for (const [uid, b] of r.bets) {
-    if (winner && b.onUid === winner.uid) move(uid, b.amt * list.length, "bet won " + r.rid);
-  }
 
   store.set("results/" + r.rid, {
     rid: r.rid, table: r.table, at: Date.now(), pot,
     winner: winner ? { uid: winner.uid, name: winner.name, dist: Math.round(winner.dist) } : null,
-    field: list.map(e => ({ name: e.name, dist: Math.round(e.dist) })),
-    bets: [...r.bets.values()].map(b => ({ amt: b.amt, won: !!(winner && b.onUid === winner.uid) }))
+    field: list.map(e => ({ name: e.name, dist: Math.round(e.dist) }))
   });
   console.log("%s: race %s won by %s, pot %d%s", r.table, r.rid,
     winner ? winner.name : "nobody", pot,
@@ -600,10 +579,9 @@ function clearRound(r, now) {
   rounds.delete(r.table);
 }
 
-/* A race needs someone to race. Called off, the seats and the bets go back. */
+/* A race needs someone to race. Called off, the seats go back. */
 function callOff(r, now) {
   for (const [uid, e] of r.entrants) if (e.paid) move(uid, G.ENTRY_FEE, "refund " + r.rid);
-  for (const [uid, b] of r.bets) if (b.paid) move(uid, b.amt, "refund bet " + r.rid);
   r.settled = true;
   rounds.delete(r.table);
   store.set("live/" + r.table, { rid: "", cancelled: true, serverNow: now, host: "" });
@@ -650,9 +628,7 @@ setInterval(() => {
     /* The last pilot in the channel has won it, and the pot is theirs whatever
        happens next - there is nobody left to take it from them. But a race is
        a distance as well as a result, and there is a board with their name on
-       it, so the channel stays open and they fly on until they clip something.
-       What stops the moment it is decided is the betting: there is nothing
-       left to have an opinion about. */
+       it, so the channel stays open and they fly on until they clip something. */
     if (list.length >= 2 && racing.length === 1 && !r.lastOne) {
       /* the loop walks values, which carry no uid of their own - the uid is
          the key, so it has to be looked up by identity */
@@ -869,7 +845,7 @@ const server = http.createServer((req, res) => {
     });
     res.end(JSON.stringify({
       tableCap: G.TABLE_CAP, entryFee: G.ENTRY_FEE, joinWindow: G.JOIN_WINDOW,
-      startCoins: G.START_COINS, stakes: G.STAKES
+      startCoins: G.START_COINS
     }));
     return;
   }
