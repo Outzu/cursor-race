@@ -86,8 +86,18 @@ const ACCOUNT_CSS =
 
 const raw = fs.readFileSync(SRC, "utf8");
 const lifted = liftMedia(raw);
-const game = lifted.html;
+let game = lifted.html;
 const title = (/<title>([^<]*)<\/title>/i.exec(game) || [, "Cursor Clash"])[1];
+
+/* The tab icon has to be asked for from the head: Firefox takes an icon link
+   wherever it finds one, Chrome only there, and the game's own markup lands
+   in the body. So the link comes out of the game and goes up into the head,
+   and the picture is also copied to public/favicon.png for the browsers that
+   ask for /favicon.ico by name without reading the page at all. */
+const iconTag = (/<link[^>]*rel="icon"[^>]*>\s*/i.exec(game) || [""])[0];
+game = game.replace(iconTag, "");
+const iconFile = (/href="(media\/[^"]+)"/.exec(iconTag) || [])[1];
+if (iconFile) fs.copyFileSync(path.join(__dirname, "public", iconFile), path.join(__dirname, "public", "favicon.png"));
 
 /* The pictures the first frame needs are asked for in the head, so they are
    on their way before the game has finished parsing. */
@@ -96,11 +106,26 @@ const preload = fs.readdirSync(MEDIA)
   .map(f => '<link rel="preload" as="image" href="media/' + f + '">')
   .join("\n");
 
+/* Google Analytics, on the hosted page only: the artifact lives inside
+   claude.ai and is nobody's site to measure. */
+const GA_ID = "G-PMSSLJK69Q";
+const GA_TAG =
+  '<!-- Google tag (gtag.js) -->\n' +
+  '<script async src="https://www.googletagmanager.com/gtag/js?id=' + GA_ID + '"></script>\n' +
+  '<script>\n' +
+  '  window.dataLayer = window.dataLayer || [];\n' +
+  '  function gtag(){dataLayer.push(arguments);}\n' +
+  "  gtag('js', new Date());\n" +
+  "  gtag('config', '" + GA_ID + "');\n" +
+  '</script>\n';
+
 const page =
   "<!doctype html>\n<html lang=\"en\">\n<head>\n" +
   "<meta charset=\"utf-8\">\n" +
   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\n" +
   "<title>" + title + "</title>\n" +
+  iconTag.trim() + "\n" +
+  GA_TAG +
   "<style>" + SKELETON_CSS + ACCOUNT_CSS + "</style>\n" +
   preload + "\n" +
   "</head>\n<body>\n" +

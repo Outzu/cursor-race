@@ -967,6 +967,7 @@ const server = http.createServer((req, res) => {
   }
 
   let file = url.pathname === "/" ? "index.html" : url.pathname.replace(/^\/+/, "");
+  if (file === "favicon.ico") file = "favicon.png";       // asked for by name by browsers that never read the page; a PNG is fine by them
   const full = path.join(PUBLIC, file);
   if (!full.startsWith(PUBLIC)) { res.writeHead(403); return res.end("no"); }
   fs.readFile(full, (err, body) => {
