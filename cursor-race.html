@@ -558,9 +558,10 @@
   .power img { width: 44px; height: 44px; display: block; }
   .power b { color: var(--ink); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
   .powers .head { grid-column: 1 / -1; font-family: var(--data); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--aqua); margin-top: 4px; }
-  .dealt { display: flex; align-items: center; gap: 12px; margin: 6px auto 0; padding: 10px 16px 10px 10px; border-radius: 12px;
-    background: color-mix(in srgb, var(--wall) 55%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
-    font-family: var(--data); font-size: 12px; color: var(--dim); text-align: left; max-width: 420px; }
+  /* read over the channel through a thin veil, so it is a solid card */
+  .dealt { display: flex; align-items: center; gap: 12px; margin: 0 auto 14px; padding: 10px 16px 10px 10px; border-radius: 12px;
+    background: color-mix(in srgb, var(--void) 94%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 65%, transparent), 0 6px 24px rgba(0,0,0,.45);
+    font-family: var(--data); font-size: 12px; color: var(--ink); text-align: left; max-width: 420px; }
   .dealt img { width: 52px; height: 52px; display: block; flex: none; }
   .dealt b { display: block; color: var(--ink); font-size: 13px; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 2px; }
   .dealt em { font-style: normal; color: var(--amber); }
@@ -5365,8 +5366,8 @@
            Somebody watching still gets told that is what they are doing. */
         veil.innerHTML = wrapHTML(
           (S.joined ? "" : '<p class="callout">Watching this one.</p>') +
-          lightsHTML(secs) +
-          dealtHTML());
+          dealtHTML() +
+          lightsHTML(secs));
         return;
       }
       const pot = roundField().length * ENTRY_FEE;
@@ -5486,10 +5487,7 @@
         '<button class="go ghost" data-act="leave">Change lobby</button>' +
         '<button class="go ghost" data-act="hide">Pilot &amp; cursor</button>' +
       '</div>' +
-      '<p id="veilNote">' + (S.db
-        ? "Everyone on this link shares one race clock. Open a race and the others have " + S.gateSecs +
-          " seconds to take a seat - if nobody has by the time the lights come on, the race is called off and your entry comes back."
-        : "Sign-in data is not available here, so this view runs single player only.") + '</p>' +
+      (S.db ? '' : '<p id="veilNote">Sign-in data is not available here, so this view runs single player only.</p>') +
       noteLine());
   }
 
@@ -5502,7 +5500,7 @@
      shown. */
   const POWERS = [{
     id: "rocket", name: "Rocket",
-    blurb: "Knocks out the next obstacle ahead of you. Only near a milestone, where they stand.",
+    blurb: "Knocks out the next obstacle ahead of you.",
     draw(c, s) {
       c.save(); c.translate(s / 2, s / 2); c.rotate(-Math.PI / 4); c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
       // flame
@@ -5526,7 +5524,7 @@
     }
   }, {
     id: "poop", name: "Poop",
-    blurb: "Drops one behind you. Whoever runs into it loses the run's coins and gems.",
+    blurb: "Drops one behind you. Who runs into it loses the coins and gems.",
     draw(c, s) {
       c.lineWidth = s * .05; c.strokeStyle = "#2a1408"; c.lineJoin = "round";
       const g = c.createLinearGradient(0, s * .2, 0, s * .9); g.addColorStop(0, "#9b5b2b"); g.addColorStop(1, "#5a2e10");
@@ -5542,7 +5540,7 @@
     }
   }, {
     id: "knife", name: "Knife",
-    blurb: "Drops a blade. Whoever runs into it has their tail cut off.",
+    blurb: "Drops a blade. Who runs into it loses their tail.",
     draw(c, s) {
       c.save(); c.translate(s / 2, s / 2); c.rotate(-Math.PI / 4); c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
       // blade
@@ -5558,7 +5556,7 @@
     }
   }, {
     id: "mp3", name: "MP3 player",
-    blurb: "Switches the taunts off for you, for the rest of the race.",
+    blurb: "Switches the taunts off for you.",
     draw(c, s) {
       c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
       // earbuds, behind
@@ -5577,7 +5575,7 @@
     }
   }, {
     id: "sub", name: "Subwoofer",
-    blurb: "The next taunt plays three times as loud - for everyone but you.",
+    blurb: "The next taunt plays three times as loud for everyone else.",
     draw(c, s) {
       c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
       // sound waves
@@ -5596,7 +5594,7 @@
     }
   }, {
     id: "banana", name: "Banana",
-    blurb: "Drops a peel. Whoever runs into it steers backwards for two seconds: left is right, up is down.",
+    blurb: "Drops a peel. Who runs into it steers backwards for two seconds.",
     draw(c, s) {
       c.lineWidth = s * .05; c.strokeStyle = "#3a2a06"; c.lineJoin = "round"; c.lineCap = "round";
       // the fruit, peeled bare at the top
