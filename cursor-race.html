@@ -3007,23 +3007,28 @@
      These are bound whatever the device says it is: a pen on a screen that
      reports a fine pointer is still a pen. */
   const drags = (t) => t === "touch" || t === "pen";
+  /* One finger steers: the first one down, followed by its own id, so a
+     second finger - on the power tag, or anywhere else - neither drags the
+     cursor about nor, on lifting, takes the steering finger's anchor with
+     it. That second finger used to do exactly that, and the cursor sat
+     frozen until the first was lifted and put down again. */
   let touchAnchor = null, lastStepAt = 0;
   if (TOUCH) S.inside = true;
   addEventListener("pointerdown", e => {
-    if (!drags(e.pointerType)) return;
-    touchAnchor = { x: e.clientX, y: e.clientY };
+    if (!drags(e.pointerType) || touchAnchor) return;         // a second finger is not the hand on the wheel
+    touchAnchor = { id: e.pointerId, x: e.clientX, y: e.clientY };
   }, { passive: true });
   addEventListener("pointermove", e => {
-    if (!drags(e.pointerType) || !touchAnchor) return;
+    if (!drags(e.pointerType) || !touchAnchor || e.pointerId !== touchAnchor.id) return;
     const f = (dprOf() / (scale || 1)) * (slipping() ? -1 : 1);   // screen pixels to channel units; the banana turns them round
     S.cx = Math.max(R, Math.min(W - R, S.cx + (e.clientX - touchAnchor.x) * f));
     S.cy = Math.max(R, Math.min(H - R, S.cy + (e.clientY - touchAnchor.y) * f));
-    touchAnchor = { x: e.clientX, y: e.clientY };
+    touchAnchor.x = e.clientX; touchAnchor.y = e.clientY;
     S.inside = true;
   }, { passive: true });
   ["pointerup", "pointercancel"].forEach(ev =>
     addEventListener(ev, e => {
-      if (drags(e.pointerType)) touchAnchor = null;   // next contact starts afresh
+      if (drags(e.pointerType) && touchAnchor && e.pointerId === touchAnchor.id) touchAnchor = null;   // next contact starts afresh
     }, { passive: true }));
   stage.addEventListener("pointerdown", e => e.preventDefault());
 
@@ -5987,6 +5992,7 @@
     }
   }
   $("powerTag").addEventListener("pointerdown", e => { e.preventDefault(); e.stopPropagation(); usePower(); });
+  ["pointerup", "pointercancel"].forEach(ev => $("powerTag").addEventListener(ev, e => e.stopPropagation()));
   stage.addEventListener("pointerdown", e => { if (e.pointerType === "mouse" && e.button === 0) usePower(); });
   addEventListener("keydown", e => {
     if (e.code === "Space" && S.phase === "racing" && !S.solo) { e.preventDefault(); usePower(); }
