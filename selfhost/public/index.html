@@ -3036,32 +3036,51 @@
 
   /* Another pilot's cursor arrives about twenty times a second, and drawing it
      wherever the last packet left it steps visibly at sixty frames. So each
-     peer keeps a short buffer of the places it has been, and is drawn a tenth
-     of a second in the past, between the two samples that bracket that moment.
+     peer keeps a short buffer of the places it has been, and is drawn a
+     little in the past, between the two samples that bracket that moment.
      The delay is what buys the smoothing: there is almost always a later
      sample to move towards. Only the picture is interpolated - nothing here
-     decides who wins. */
-  const GHOST_LAG_MIN = 70, GHOST_LAG_MAX = 260;
+     decides who wins.
+
+     Each sample is placed on the sender's clock, not ours: a packet that
+     dawdled on the way still lands where it was sent from, so a jittery
+     link does not turn into a cursor that hurries and halts. The sender's
+     clock is mapped onto ours by the quickest arrival seen so far, drifting
+     slowly after it; a sender that gives no time (an older page) is placed
+     by arrival as before. Past the newest sample the cursor carries on at
+     its last speed for a moment rather than freezing - on a slow link that
+     is the difference between gliding and stepping. */
+  const GHOST_LAG_MIN = 70, GHOST_LAG_MAX = 700, GHOST_COAST = 220;
   const ghostPaths = new Map();
 
-  function ghostAt(peer, x, y, now) {
+  function ghostAt(peer, x, y, now, sent) {
     let g = ghostPaths.get(peer);
     if (!g) {
-      g = { buf: [{ t: now, x, y }], gap: 60, jit: 15, last: now };
+      g = { buf: [], gap: 60, jit: 15, last: now, off: null, seen: null };
       ghostPaths.set(peer, g);
     }
     const buf = g.buf;
-    const tail = buf[buf.length - 1];
-    if (tail.x !== x || tail.y !== y) {
+    // when this sample happened, on our clock
+    let t = now;
+    if (isFinite(sent) && sent > 0) {
+      const o = now - sent;
+      if (g.off === null || o < g.off) g.off = o;        // the quickest arrival is the truest offset
+      else g.off += (o - g.off) * 0.002;                   // and it is let drift, slowly, in case the quick one was a fluke
+      t = sent + g.off;
+    }
+    const fresh = isFinite(sent) && sent > 0 ? sent !== g.seen : !buf.length || buf[buf.length - 1].x !== x || buf[buf.length - 1].y !== y;
+    if (fresh) {
+      g.seen = sent;
       const d = now - g.last;                 // how long that update took to turn up
       g.last = now;
       if (d > 0 && d < 2000) {
         g.gap += (d - g.gap) * 0.12;
         g.jit += (Math.abs(d - g.gap) - g.jit) * 0.12;
       }
-      buf.push({ t: now, x, y });
-      if (buf.length > 24) buf.splice(0, buf.length - 24);
+      if (!buf.length || t > buf[buf.length - 1].t) buf.push({ t, x, y });
+      if (buf.length > 40) buf.splice(0, buf.length - 40);
     }
+    if (!buf.length) return [x, y];
 
     /* The buffer has to reach back far enough to cover the gap between updates
        and however much that gap wanders, or a late packet leaves the cursor
@@ -3071,7 +3090,12 @@
     while (buf.length > 2 && buf[1].t <= at) buf.shift();
     const a = buf[0], b = buf[1];
     if (!b || at <= a.t) return [a.x, a.y];
-    if (at >= b.t) return [b.x, b.y];      // out of future: sit on the latest
+    if (at >= b.t) {
+      // out of future: carry on at the last speed for a moment, then hold
+      const dt = b.t - a.t, over = Math.min(GHOST_COAST, at - b.t);
+      if (dt <= 0) return [b.x, b.y];
+      return [b.x + (b.x - a.x) / dt * over, b.y + (b.y - a.y) / dt * over];
+    }
     const k = (at - a.t) / (b.t - a.t);
     return [a.x + (b.x - a.x) * k, a.y + (b.y - a.y) * k];
   }
@@ -3896,7 +3920,8 @@
       rg: S.runGems,
       pw: S.wipes || 0,
       dist: Math.round(S.death ? S.death.dist : S.dist),
-      cursor: { x: +(S.cx / W).toFixed(3), y: +(S.cy / H).toFixed(3) }
+      cursor: { x: +(S.cx / W).toFixed(3), y: +(S.cy / H).toFixed(3) },
+      t: Date.now()                      // when this was true, on the sender's clock; see ghostAt
     };
     S.tableRoom.presence(body).catch(() => {});
   }
@@ -4211,7 +4236,7 @@
          only the scroll moves. */
       const theirDist = Number(pr.dist);
       const ru = (isFinite(theirDist) ? theirDist : dist) + H - ry;
-      const smooth = ghostAt(p.peer, rx, ru, now);
+      const smooth = ghostAt(p.peer, rx, ru, now, Number(pr.t));
       const gx = smooth[0], gy = H - (smooth[1] - dist);
       const col = typeof pr.color === "string" ? pr.color : "#8b99bb";
       const out = pr.state !== "racing";
