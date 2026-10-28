@@ -119,11 +119,37 @@ const GA_TAG =
   "  gtag('config', '" + GA_ID + "');\n" +
   '</script>\n';
 
+/* What a search engine and a link preview read. One canonical address for
+   both servers, so the mirror in the States is not indexed as a copy of the
+   first; and a description that says what the game is, since without one
+   the engine quotes whatever text it finds in the page. */
+const SITE = "https://cursorclash.com/";
+const TAGLINE = "Cursor Clash - last cursor standing";
+const DESCRIPTION = "Free multiplayer browser game: steer your mouse cursor down a narrowing channel against your friends. " +
+  "Last cursor standing wins the pot. No download, no account needed.";
+const SEO =
+  '<meta name="description" content="' + DESCRIPTION + '">\n' +
+  '<link rel="canonical" href="' + SITE + '">\n' +
+  '<meta name="theme-color" content="#040a20">\n' +
+  '<meta property="og:type" content="website">\n' +
+  '<meta property="og:site_name" content="Cursor Clash">\n' +
+  '<meta property="og:title" content="' + TAGLINE + '">\n' +
+  '<meta property="og:description" content="' + DESCRIPTION + '">\n' +
+  '<meta property="og:url" content="' + SITE + '">\n' +
+  '<meta property="og:image" content="' + SITE + 'og.jpg">\n' +
+  '<meta property="og:image:width" content="1200">\n' +
+  '<meta property="og:image:height" content="630">\n' +
+  '<meta name="twitter:card" content="summary_large_image">\n' +
+  '<meta name="twitter:title" content="' + TAGLINE + '">\n' +
+  '<meta name="twitter:description" content="' + DESCRIPTION + '">\n' +
+  '<meta name="twitter:image" content="' + SITE + 'og.jpg">\n';
+
 const page =
   "<!doctype html>\n<html lang=\"en\">\n<head>\n" +
   "<meta charset=\"utf-8\">\n" +
   "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1,viewport-fit=cover\">\n" +
-  "<title>" + title + "</title>\n" +
+  "<title>" + TAGLINE + "</title>\n" +
+  SEO +
   iconTag.trim() + "\n" +
   GA_TAG +
   "<style>" + SKELETON_CSS + ACCOUNT_CSS + "</style>\n" +
