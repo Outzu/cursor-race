@@ -6643,6 +6643,14 @@
   });
 
   const previews = [];
+  /* Only the previews on screen are drawn. The picker is out of sight for the
+     whole of a race, and open it shows a dozen or so at a time - yet every
+     one of the forty-odd canvases was being repainted seven times a second,
+     race or not, and that was a hitch on every seventh frame. */
+  const onScreen = new WeakSet();
+  const watchPreviews = typeof IntersectionObserver === "function"
+    ? new IntersectionObserver(es => { for (const e of es) { if (e.isIntersecting) onScreen.add(e.target); else onScreen.delete(e.target); } })
+    : null;
   const LOCK = '<svg class="lock" viewBox="0 0 24 24" aria-hidden="true">' +
     '<path d="M7 10V7a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2.4"/>' +
     '<rect x="4" y="10" width="16" height="11" rx="2" fill="currentColor"/></svg>';
@@ -6663,7 +6671,7 @@
         (have ? "" : LOCK) +
         '<span class="lbl">' + (have ? esc(s.name) : s.gift ? "Free &middot; sign in to claim" : s.cost) + '</span></button>';
     }).join("");
-    host.querySelectorAll("canvas").forEach((c, i) => previews.push({ c, item: items[i] }));
+    host.querySelectorAll("canvas").forEach((c, i) => { previews.push({ c, item: items[i] }); if (watchPreviews) watchPreviews.observe(c); });
   }
 
   /* the hint line under each grid doubles as the till */
@@ -6690,6 +6698,7 @@
     if ($("skins").dataset.sig !== sig || $("tails").dataset.sig !== sig ||
         $("grounds").dataset.sig !== sig) {
       previews.length = 0;                       // cleared, so every grid rebuilds
+      if (watchPreviews) watchPreviews.disconnect();
       $("skins").dataset.sig = ""; $("tails").dataset.sig = ""; $("grounds").dataset.sig = "";
     }
     grid($("skins"), SKINS, S.skin, sig, "skins");
@@ -6729,6 +6738,7 @@
   }
   function drawPreviews(now) {
     for (const p of previews) {
+      if (watchPreviews && !onScreen.has(p.c)) continue;
       const c = p.c.getContext("2d");
       c.setTransform(4, 0, 0, 4, 0, 0);     // 136px of canvas over a 34 unit drawing
       c.clearRect(0, 0, 34, 34);
