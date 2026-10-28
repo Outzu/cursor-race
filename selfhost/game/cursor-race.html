@@ -1714,7 +1714,7 @@
       if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
       const room = Math.max(0, halfW(u) - MYST_R - 26);
       list.push({ id: "m" + n + "-0", u, x: centerX(u, wd) + (rnd() * 2 - 1) * room, appearY: 40 + rnd() * 300,
-                  solo: rnd() < 0.5 });             // alone, only half the coins are laid
+                  solo: rnd() < 0.75 });            // alone, three coins in four are laid
     }
     if (mystCache.size > 80) mystCache.clear();
     mystCache.set(key, list);
@@ -1748,7 +1748,7 @@
     if (list) return list;
     const rnd = mulberry32(hashStr(key));
     list = [];
-    if (n >= 1 && rnd() < 0.3) {                    // one stretch in three or so: a power is a treat, not the road
+    if (n >= 1 && rnd() < 0.45) {                   // a little under one stretch in two: a power is a treat, not the road
       let u = (n + 0.2 + rnd() * 0.6) * SOLO_EVERY;
       const off = ((u - GATE_START) % GATE_SPACE + GATE_SPACE) % GATE_SPACE;
       if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
