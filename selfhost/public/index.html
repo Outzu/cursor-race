@@ -1250,7 +1250,11 @@
   /* ---------- fixed logical playfield: identical for every player ---------- */
   const W = 800, H = 1000;
   const R = 7;
-  const V0 = 150, TA = 22, VMAX = 760;
+  /* Off the line at 200 a second, a third quicker than it once was; the
+     climb a doubling every 28 seconds rather than 22, and it tops out at 700
+     rather than 760 - the old pace ran away from the hands on it. The
+     server has the same three numbers in game.js. */
+  const V0 = 200, TA = 28, VMAX = 700;
   const T_CAP = TA * (VMAX / V0 - 1);
   const GATE_START = 900, GATE_SPACE = 520, GATE_TH = 20;
   /* the starting grid: a chequered band across the channel that pilots are held
@@ -1333,13 +1337,14 @@
     pillarCache.clear();
     return { seed: key, ph, per, gates };
   }
-  /* how far along the narrowing has got: the full squeeze is only reached
-     after 18 km, so the opening kilometres stay generous */
-  const press = u => Math.min(1, Math.max(0, u) / 18000);
+  /* how far along the narrowing has got: nothing until 4 km, then tighter
+     and tighter to the full squeeze at 18 km, so the opening kilometres are
+     about the speed and the obstacles rather than the walls */
+  const press = u => Math.min(1, Math.max(0, u - 40000) / 140000);
   /* the channel breathes — tight stretches and wide ones alternate on two
      scales, so the width keeps changing instead of only narrowing with age */
   const squeeze = u => 0.95 + 0.18 * Math.sin(u / 520) * Math.cos(u / 1270) - 0.08 * Math.sin(u / 240);
-  const baseHalf = u => (150 - 58 * press(u)) * squeeze(u);
+  const baseHalf = u => (142 - 50 * press(u)) * squeeze(u);
 
   /* every 1000 m the channel opens into a wide plaza — easier walls, but it is
      filled with pillars, so the breather costs attention instead of nerve */
@@ -1430,10 +1435,19 @@
     const bend = centerX(u + 90, wd) - centerX(u - 90, wd);
     if (Math.abs(bend) > 24) {
       const side = centerX(u, wd) > W / 2 ? -1 : 1;     // out where the room is
+      const w = 248, bh = w * BOARD_WH[1] / BOARD_WH[0];
+      /* The board stands as tall as the sprite, and the channel bends under
+         it, so it is set back from the wall's furthest reach over that whole
+         height - never over the channel, never over a gate. */
+      let edge = side < 0 ? Infinity : -Infinity;
+      for (let v = u; v <= u + bh; v += 20) {
+        const c = centerX(v, wd), hw = halfW(v);
+        edge = side < 0 ? Math.min(edge, c - hw) : Math.max(edge, c + hw);
+      }
       list.push({
         u, side,
-        x: centerX(u, wd) + side * (halfW(u) + 30),
-        w: 248, h: 96,                         // a big board: it is meant to be read at speed
+        x: edge + side * 44,
+        w, h: 96,                              // a big board: it is meant to be read at speed
         who: SPONSORS.length ? drawSponsor() : null,
         phase: rnd()
       });
@@ -1614,7 +1628,9 @@
     };
     const first = span(BREAK_EVERY);
     const share = first > 0 ? Math.min(1, span(n * BREAK_EVERY) / first) : 1;
-    const count = Math.max(3, Math.round((5 + Math.floor(rnd() * 4)) * share));
+    // the first milestones are a taste: fewer in the way, more with every one after
+    const ease = Math.min(1, 0.45 + 0.18 * (n - 1));
+    const count = Math.max(n <= 2 ? 2 : 3, Math.round((5 + Math.floor(rnd() * 4)) * share * ease));
 
     list = [];
     for (let i = 0; i < count; i++) {
@@ -3055,7 +3071,7 @@
     let g = ghostHeads.get(peer);
     if (!g) { g = { x, y, a: -Math.PI / 2 }; ghostHeads.set(peer, g); return g.a; }
     const dx = x - g.x, dy = y - g.y;
-    if (dx * dx + dy * dy > 2.25) { g.a = turnToward(g.a, Math.atan2(dy, dx), .35); g.x = x; g.y = y; }
+    if (dx * dx + dy * dy > 2.25) { g.a = turnToward(g.a, Math.atan2(dy, dx), .18); g.x = x; g.y = y; }
     return g.a;
   }
 
@@ -4246,6 +4262,11 @@
 
     // other pilots
     const seen = new Set();
+    /* The more of them there are, the fainter each is drawn, so your own
+       cursor - full colour, and ringed in its colour once there is company -
+       is the one that stands out in a crowd of ten. */
+    const crowd = S.peers.filter(p => p.presence && !p.sameTab && p.presence.rid === S.rid && p.presence.joined && p.presence.cursor).length;
+    const fade = crowd >= 3 ? Math.max(0.28, 0.62 - 0.04 * crowd) : 0.8;
     for (const p of S.peers) {
       const pr = p.presence;
       if (!pr || p.sameTab || pr.rid !== S.rid || !pr.joined || !pr.cursor) continue;
@@ -4279,12 +4300,12 @@
         if (!last || Math.abs(last[0] - gx) > 0.5 || Math.abs(last[1] - gy) > 0.5) tr.push([gx, gy, now]);
         while (tr.length && now - tr[0][2] > TAIL_LIFE) tr.shift();
         if (tr.length > 28) tr.shift();
-        ctx.globalAlpha = 0.6;
+        ctx.globalAlpha = Math.min(0.6, fade);
         drawTail(ctx, tl, sagged(tr, now, 48), col, now);
         ctx.globalAlpha = 1;
-        emitParticles(p.peer, tl, col, gx, dist + H - gy, now, 0.7);
+        emitParticles(p.peer, tl, col, gx, dist + H - gy, now, crowd >= 3 ? 0.35 : 0.7);
       }
-      ctx.globalAlpha = out ? 0.26 : 0.8;
+      ctx.globalAlpha = out ? 0.2 : fade;
       if (out) {
         ctx.strokeStyle = col; ctx.lineWidth = 2;
         ctx.beginPath();
@@ -4294,7 +4315,7 @@
       } else {
         sk.draw(ctx, gx, gy, col, now, ghostHeading(p.peer, gx, gy));
       }
-      ctx.globalAlpha = out ? 0.4 : 0.9;
+      ctx.globalAlpha = out ? 0.3 : Math.min(0.9, fade + 0.15);
       ctx.fillStyle = col;
       ctx.font = '600 12px "Azeret Mono", monospace';
       ctx.textAlign = "center";
@@ -4312,6 +4333,10 @@
       if (S.phase === "open") {
         ctx.strokeStyle = withA(S.color, .5); ctx.lineWidth = 2;
         ctx.beginPath(); ctx.arc(S.cx, S.cy, R + 8 + 3 * Math.sin(now / 160), 0, TAU); ctx.stroke();
+      }
+      if (!S.solo && S.phase === "racing" && crowd > 0) {      // yours, among the others: a ring in your colour
+        ctx.strokeStyle = withA(S.color, .75); ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(S.cx, S.cy, R + 8 + 1.5 * Math.sin(now / 320), 0, TAU); ctx.stroke();
       }
       ctx.fillStyle = withA(S.color, .16);
       ctx.beginPath(); ctx.arc(S.cx, S.cy, R, 0, TAU); ctx.fill();
@@ -4425,7 +4450,7 @@
           const lastPt = S.trail[S.trail.length - 1];
           if (lastPt) {
             const dx = S.cx - lastPt[0], dy = S.cy - lastPt[1];
-            if (dx * dx + dy * dy > 2.25) S.heading = turnToward(S.heading, Math.atan2(dy, dx), .35);
+            if (dx * dx + dy * dy > 2.25) S.heading = turnToward(S.heading, Math.atan2(dy, dx), .12);   // eased, not snapped: a nose that swings
           }
           if (!lastPt || Math.abs(lastPt[0] - S.cx) > 0.4 || Math.abs(lastPt[1] - S.cy) > 0.4) {
             S.trail.push([S.cx, S.cy, now]);

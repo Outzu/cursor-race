@@ -3,7 +3,7 @@
    the matching constants in game/cursor-race.html. */
 
 const W = 800, H = 1000;
-const V0 = 150, TA = 22, VMAX = 760;
+const V0 = 200, TA = 28, VMAX = 700;
 const T_CAP = TA * (VMAX / V0 - 1);
 
 /* how far the channel has scrolled t seconds after the gate opens */
