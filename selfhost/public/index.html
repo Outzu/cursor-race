@@ -1913,7 +1913,10 @@
 
     const im = new Image();
     im.decoding = "async";
-    im.onload = () => { a.still = im; cursorUrl = null; updateAppCursor(); };
+    im.onload = () => {                    // mid-race the page cursor is hidden: it is redrawn when the race lets go
+      a.still = im; cursorUrl = null;
+      if (!document.body.classList.contains("focus")) updateAppCursor();
+    };
     im.src = src;
 
     /* Only a WebP can be an animation here, so only a WebP goes to the
@@ -3277,6 +3280,7 @@
   function exitFocus() {
     if (!document.body.classList.contains("focus")) return;
     document.body.classList.remove("focus");
+    updateAppCursor();                                 // any picture that came in during the race
     if (document.fullscreenElement && document.exitFullscreen) {
       try { document.exitFullscreen().catch(() => {}); } catch (e) {}
     }
@@ -5957,7 +5961,7 @@
     if (url) return url;
     const p = POWERS.find(q => q.id === id);
     const c = document.createElement("canvas"); c.width = c.height = px;
-    const g = c.getContext("2d"); g.lineCap = "round";
+    const g = c.getContext("2d", { willReadFrequently: true }); g.lineCap = "round";
     if (p) p.draw(g, px);
     url = c.toDataURL("image/png");
     powerArtCache.set(key, url);
@@ -6168,11 +6172,26 @@
   function rocketUpArt() {
     if (rocketUpUrl) return rocketUpUrl;
     const c = document.createElement("canvas"); c.width = c.height = 64;
-    const g = c.getContext("2d"); g.lineCap = "round";
+    const g = c.getContext("2d", { willReadFrequently: true }); g.lineCap = "round";
     g.translate(32, 32); g.rotate(Math.PI / 4); g.translate(-32, -32);
     POWERS.find(p => p.id === "rocket").draw(g, 64);
     return (rocketUpUrl = c.toDataURL("image/png"));
   }
+  /* Painting a power's picture and turning it into a PNG takes a frame or
+     two, and the first peel scrolling in or the first coin paying out is the
+     worst moment for it: the race skips. So every picture a race can ask for -
+     on the course, in the flash, in the hand, in the note, at the lights - is
+     painted ahead, one at a time in the page's idle moments. */
+  (function warmPowerArt() {
+    const jobs = [() => art(rocketUpArt())];
+    for (const p of POWERS) {
+      jobs.push(() => art(powerArt(p.id, 64)));
+      for (const px of [72, 60, 44, 104]) jobs.push(() => powerArt(p.id, px));
+    }
+    const idle = window.requestIdleCallback ? cb => requestIdleCallback(cb, { timeout: 3000 }) : cb => setTimeout(cb, 60);
+    const step = () => { const job = jobs.shift(); if (!job) return; try { job(); } catch (e) {} idle(step); };
+    setTimeout(() => idle(step), 1500);              // after the page has settled
+  })();
   /* The rocket on its way: drawn along a straight line from where it was
      fired to the obstacle, nose first, flame behind, easing up to speed.
      On arrival the obstacle is blown - a flash, a ring, and sparks and
@@ -6887,7 +6906,7 @@
   cursorCanvas.width = cursorCanvas.height = CURSOR_BOX;
   function updateAppCursor(now) {
     const head = effSkin();
-    const g = cursorCanvas.getContext("2d");
+    const g = cursorCanvas.getContext("2d", { willReadFrequently: true });
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, CURSOR_BOX, CURSOR_BOX);
     g.translate(CURSOR_BOX / 2, CURSOR_BOX / 2);
