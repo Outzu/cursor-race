@@ -570,14 +570,12 @@
     background: color-mix(in srgb, var(--void) 78%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 50%, transparent);
     font-family: var(--data); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink);
     cursor: pointer; pointer-events: auto; touch-action: none; user-select: none; -webkit-user-select: none; }
-  .power-tag .q { display: none; }
   .power-tag:active { background: color-mix(in srgb, var(--amber) 30%, var(--void)); }
   .power-tag.used { opacity: .55; cursor: default; }
   .power-tag img { width: 30px; height: 30px; display: block; }
   .power-tag small { color: var(--dim); font-size: 9px; letter-spacing: .08em; text-transform: none; }
   .power-tag.used small { color: var(--amber); }
   .power-tag .more { padding: 2px 7px; border-radius: 999px; background: var(--amber); color: var(--void); font-size: 10px; font-weight: 700; font-style: normal; }
-  .power-tag.empty { opacity: .5; cursor: default; }
   /* what just happened to you: a line above the tag, gone in a few seconds */
   .power-note { position: relative; margin-top: 8px; max-width: min(300px, 60vw);
     padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--void) 82%, transparent);
@@ -586,7 +584,6 @@
   @media (pointer: coarse) {
     .power-tag { width: 58px; height: 58px; padding: 0; border-radius: 50%; justify-content: center; margin-top: 10px; }
     .power-tag > span { display: none; }
-    .power-tag .q { display: block; font-size: 24px; font-weight: 700; color: var(--dim); }
     .power-tag img { width: 36px; height: 36px; }
     .power-tag .more { position: absolute; top: -4px; right: -6px; }
     .power-note { max-width: min(260px, 70vw); font-size: 10px; }
@@ -5909,13 +5906,11 @@
     }
     const key = inRace ? S.rid + ":" + S.powers.join(",") : "";
     if (key === powerTagFor && !force) return;
+    if (!force && inRace && powerTagFor === S.rid + ":spent") return;   // the last one's word, held a moment
     powerTagFor = key;
     if (!inRace) { tag.hidden = true; tag.innerHTML = ""; return; }
     const p = powerById(S.powers[0]);
-    if (!p) {
-      tag.innerHTML = '<span class="q">?</span><span>no power<br><small>' + (S.solo ? "pick one up in the channel" : "a ? coin gives one") + '</small></span>';
-      tag.className = "power-tag empty"; tag.hidden = false; return;
-    }
+    if (!p) { tag.hidden = true; tag.innerHTML = ""; tag.className = "power-tag"; return; }   // nothing in hand, nothing shown
     tag.innerHTML = powerImg(p, 60) +
       (S.powers.length > 1 ? '<i class="more">+' + (S.powers.length - 1) + '</i>' : '') +
       '<span>' + esc(p.name) + '<br><small>' + (TOUCH ? "tap to use" : "click or space to use") + '</small></span>';
@@ -5924,6 +5919,7 @@
   const tagNote = t => { const el = $("powerTag").querySelector("small"); if (el) el.textContent = t; };
   let noteTimer = 0;
   function hudNote(kind, text) {
+    if (TOUCH) return;                            // on a phone the note would lie across the channel
     const el = $("powerNote");
     el.innerHTML = (kind ? powerImg(POWERS.find(p => p.id === kind) || POWERS[0], 44) : "") + esc(text);
     el.hidden = false;
@@ -5995,9 +5991,10 @@
       const tag = $("powerTag"); tag.classList.add("used");
       setTimeout(() => tag.classList.remove("used"), 1500);
       void note;
-    } else {
+    } else {                                       // the last one: its word stays a moment, then the badge goes
       $("powerTag").classList.add("used");
-      powerTagFor = S.rid + ":spent";               // the tag keeps its last word until the next coin
+      powerTagFor = S.rid + ":spent";
+      setTimeout(() => { if (powerTagFor === S.rid + ":spent") { powerTagFor = ""; syncPowerTag(true); } }, 1500);
     }
   }
   /* what a drop does to whoever runs into it */
