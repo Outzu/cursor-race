@@ -1745,6 +1745,39 @@
     return m ? (mystForBucket(Number(m[1]), wd)[Number(m[2])] || null) : null;
   }
 
+  /* Single player has nobody to drop anything on you, so the channel does
+     it: poop, knives and banana peels lie in the way, to be steered round,
+     and now and then a rocket or an MP3 player to be picked up and used.
+     Seeded like the gems, so a seed is the same course every time. */
+  const SOLO_EVERY = 1500, SOLO_R = 18;
+  const SOLO_KINDS = ["poop", "poop", "poop", "knife", "knife", "banana", "banana", "rocket", "rocket", "mp3"];
+  const soloCache = new Map();
+  function soloItemsFor(n, wd) {
+    const key = wd.seed + ":s" + n;
+    let list = soloCache.get(key);
+    if (list) return list;
+    const rnd = mulberry32(hashStr(key));
+    list = [];
+    if (n >= 1 && rnd() < 0.6) {
+      let u = (n + 0.2 + rnd() * 0.6) * SOLO_EVERY;
+      const off = ((u - GATE_START) % GATE_SPACE + GATE_SPACE) % GATE_SPACE;
+      if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
+      const room = Math.max(0, halfW(u) - SOLO_R - 26);
+      list.push({ id: "s" + n + "-0", kind: SOLO_KINDS[Math.floor(rnd() * SOLO_KINDS.length)],
+                  u, x: centerX(u, wd) + (rnd() * 2 - 1) * room, appearY: 40 + rnd() * 300 });
+    }
+    if (soloCache.size > 80) soloCache.clear();
+    soloCache.set(key, list);
+    return list;
+  }
+  function soloNear(uMin, uMax, wd) {
+    const out = [];
+    for (let n = Math.max(1, Math.floor(uMin / SOLO_EVERY) - 1); n <= Math.ceil(uMax / SOLO_EVERY) + 1; n++) {
+      for (const it of soloItemsFor(n, wd)) if (it.u > uMin && it.u < uMax) out.push(it);
+    }
+    return out;
+  }
+
   function pillarsNear(uMin, uMax, wd) {
     const out = [];
     const from = Math.max(1, breakIndex(uMin) - 1), to = breakIndex(uMax) + 1;
@@ -3806,12 +3839,25 @@
     if (!S.serverLedger) { S.gems += 1; saveProfile(); }
   }
 
+  /* something lying in the channel, in single player: a hazard lands on you
+     the way another pilot's drop would; a rocket or an MP3 player goes into
+     the hand */
+  function takeSolo(it) {
+    if (it.kind === "rocket" || it.kind === "mp3") {
+      S.powers.push(it.kind);
+      const p = powerById(it.kind);
+      hudNote(it.kind, "A " + p.name.toLowerCase() + ", picked up. " + (S.powers.length > 1 ? S.powers.length + " in hand." : "Yours to use."));
+      syncPowerTag(true);
+    } else sufferDrop({ kind: it.kind });
+  }
   /* a ? coin taken: a burst of gold, and for the taker another power in the queue */
   function takeMyst(id, mine) {
     const m = mystById(id, S.world);
     if (m) burst(m.x, m.u, mine ? "#feb703" : "rgba(254,183,3,.45)", 14);
     if (!mine || !S.powers) return;
-    const p = POWERS[Math.floor(Math.random() * POWERS.length)];
+    // alone there is nobody to drop anything on, so the coin gives what can be used
+    const pool = S.solo ? POWERS.filter(q => q.id === "rocket" || q.id === "mp3") : POWERS;
+    const p = pool[Math.floor(Math.random() * pool.length)];
     S.powers.push(p.id);
     hudNote(p.id, "A " + p.name.toLowerCase() + " from the coin. " + (S.powers.length > 1 ? S.powers.length + " in hand, used in order." : "Yours to use."));
     syncPowerTag(true);
@@ -4272,7 +4318,19 @@
     }
 
     if (!demo) drawDrops(ctx, dist, now);
-    if (!demo && !S.solo) for (const m of mystNear(uMin - 120, uMax + 120, wd)) {
+    if (!demo && S.solo) for (const it of soloNear(uMin - 120, uMax + 120, wd)) {
+      if (S.gemsTaken.has(it.id)) continue;
+      const ph = gemShow(it, dist);
+      if (ph <= 0) continue;
+      const pic = art(powerArt(it.kind, 64)).still;
+      if (!pic || !pic.naturalWidth) continue;
+      const y = H - (it.u - dist);
+      ctx.save(); ctx.globalAlpha = ph; ctx.translate(it.x, y);
+      if (it.kind === "knife") ctx.rotate(now / 500);
+      ctx.drawImage(pic, -SOLO_R, -SOLO_R, SOLO_R * 2, SOLO_R * 2);
+      ctx.restore();
+    }
+    if (!demo) for (const m of mystNear(uMin - 120, uMax + 120, wd)) {
       if (S.gemsTaken.has(m.id)) continue;
       const ph = gemShow(m, dist);
       if (ph <= 0) continue;
@@ -4519,11 +4577,17 @@
             const dx = S.cx - g.x, dy = (H - (g.u - S.dist)) - S.cy;
             if (dx * dx + dy * dy < (GEM_R + R) * (GEM_R + R)) claimGem(g.id);
           }
-          if (!S.solo) for (const m of mystNear(uNow - 260, uNow + 260, S.world)) {
+          for (const m of mystNear(uNow - 260, uNow + 260, S.world)) {
             if (S.gemsTaken.has(m.id) || S.gemPending.has(m.id)) continue;
             if (gemShow(m, S.dist) < 1) continue;
             const dx = S.cx - m.x, dy = (H - (m.u - S.dist)) - S.cy;
             if (dx * dx + dy * dy < (MYST_R + R) * (MYST_R + R)) claimGem(m.id);
+          }
+          if (S.solo) for (const it of soloNear(uNow - 260, uNow + 260, S.world)) {
+            if (S.gemsTaken.has(it.id)) continue;
+            if (gemShow(it, S.dist) < 1) continue;
+            const dx = S.cx - it.x, dy = (H - (it.u - S.dist)) - S.cy;
+            if (dx * dx + dy * dy < (SOLO_R + R) * (SOLO_R + R)) { S.gemsTaken.set(it.id, "me"); takeSolo(it); }
           }
           pickDrops();
           S.entrants = Math.max(S.entrants, roundField().length);
@@ -5858,10 +5922,10 @@
   function powerById(id) { return POWERS.find(q => q.id === id) || null; }
   function syncPowerTag(force) {
     const tag = $("powerTag");
-    const inRace = S.phase === "racing" && !S.solo && S.joined && S.powers;
-    if (inRace && S.dealtFor !== S.rid) {         // the deal, into the hand, once a race
+    const inRace = S.phase === "racing" && S.joined && S.powers;
+    if (inRace && S.dealtFor !== S.rid) {         // the deal, into the hand, once a race; alone, the hand starts empty
       S.dealtFor = S.rid;
-      const d = powerFor(S.rid, S.uid || S.me);
+      const d = S.solo ? null : powerFor(S.rid, S.uid || S.me);
       if (d) S.powers.unshift(d.id);
     }
     const key = inRace ? S.rid + ":" + S.powers.join(",") : "";
@@ -5870,7 +5934,7 @@
     if (!inRace) { tag.hidden = true; tag.innerHTML = ""; return; }
     const p = powerById(S.powers[0]);
     if (!p) {
-      tag.innerHTML = '<span class="q">?</span><span>no power<br><small>a ? coin gives one</small></span>';
+      tag.innerHTML = '<span class="q">?</span><span>no power<br><small>' + (S.solo ? "pick one up in the channel" : "a ? coin gives one") + '</small></span>';
       tag.className = "power-tag empty"; tag.hidden = false; return;
     }
     tag.innerHTML = powerImg(p, 60) +
@@ -5912,7 +5976,7 @@
     }
   }
   function usePower() {
-    if (S.phase !== "racing" || S.solo || !S.joined || !S.cleared || !S.powers) return;
+    if (S.phase !== "racing" || !S.joined || !S.cleared || !S.powers) return;
     const p = powerById(S.powers[0]);
     if (!p) return;
     const uNow = S.dist + H - S.cy;
@@ -5929,6 +5993,7 @@
                    dur: Math.min(1000, 200 + (hit.u - uNow) * 0.9) };
       tagNote(hit.kind === "pillar" ? "rocket away" : hit.kind === "gate" ? "rocket away - a gate is coming down" : "rocket away - straight into nothing");
     } else if (p.id === "poop" || p.id === "knife" || p.id === "banana") {
+      if (S.solo) { tagNote("nobody behind you to drop it on"); return; }
       const id = p.id + "-" + Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 6);
       const d = { op: "drop", id, kind: p.id, u: Math.round(uNow), x: Math.round(S.cx) };
       S.drops.set(id, { id, kind: p.id, u: d.u, x: d.x, by: "me" });      // the relay brings it back; the id keeps it one
@@ -5938,6 +6003,7 @@
       S.tauntMute = true;
       tagNote("taunts off for you");
     } else if (p.id === "sub") {
+      if (S.solo) { tagNote("nobody to deafen but you"); return; }
       if (S.tableRoom) S.tableRoom.emit("power", { op: "boom" }).catch(() => {});
       tagNote("the next taunt hits them hard");
     }
@@ -6113,7 +6179,7 @@
   ["pointerup", "pointercancel"].forEach(ev => $("powerTag").addEventListener(ev, e => e.stopPropagation()));
   stage.addEventListener("pointerdown", e => { if (e.pointerType === "mouse" && e.button === 0) usePower(); });
   addEventListener("keydown", e => {
-    if (e.code === "Space" && S.phase === "racing" && !S.solo) { e.preventDefault(); usePower(); }
+    if (e.code === "Space" && S.phase === "racing") { e.preventDefault(); usePower(); }
   });
 
   /* three lamps counting down: red at 3, amber at 2, green at 1, then go */
