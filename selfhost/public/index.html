@@ -1250,11 +1250,10 @@
   /* ---------- fixed logical playfield: identical for every player ---------- */
   const W = 800, H = 1000;
   const R = 7;
-  /* Off the line at 200 a second, a third quicker than it once was; the
-     climb a doubling every 28 seconds rather than 22, and it tops out at 700
-     rather than 760 - the old pace ran away from the hands on it. The
-     server has the same three numbers in game.js. */
-  const V0 = 200, TA = 28, VMAX = 700;
+  /* Off the line at 200 a second, a third quicker than it once was, a
+     doubling every 22 seconds, topping out at 760. The server has the same
+     three numbers in game.js. */
+  const V0 = 200, TA = 22, VMAX = 760;
   const T_CAP = TA * (VMAX / V0 - 1);
   const GATE_START = 900, GATE_SPACE = 520, GATE_TH = 20;
   /* the starting grid: a chequered band across the channel that pilots are held
@@ -1337,14 +1336,16 @@
     pillarCache.clear();
     return { seed: key, ph, per, gates };
   }
-  /* how far along the narrowing has got: nothing until 4 km, then tighter
-     and tighter to the full squeeze at 18 km, so the opening kilometres are
-     about the speed and the obstacles rather than the walls */
-  const press = u => Math.min(1, Math.max(0, u - 40000) / 140000);
+  /* how far along the narrowing has got: nothing until 3 km, then tighter
+     and tighter to the full squeeze at 15 km, so the opening kilometres are
+     about the speed and the obstacles rather than the walls. The home
+     screen's backdrop never squeezes: it scrolls for as long as the page is
+     open, and should look like the start of a race the whole time. */
+  const press = u => demoBg() ? 0 : Math.min(1, Math.max(0, u - 30000) / 120000);
   /* the channel breathes — tight stretches and wide ones alternate on two
      scales, so the width keeps changing instead of only narrowing with age */
   const squeeze = u => 0.95 + 0.18 * Math.sin(u / 520) * Math.cos(u / 1270) - 0.08 * Math.sin(u / 240);
-  const baseHalf = u => (142 - 50 * press(u)) * squeeze(u);
+  const baseHalf = u => (134 - 46 * press(u)) * squeeze(u);
 
   /* every 1000 m the channel opens into a wide plaza — easier walls, but it is
      filled with pillars, so the breather costs attention instead of nerve */
@@ -4610,7 +4611,11 @@
      behind the result card, so neither looks like a frozen frame in dark
      margins next to the home screen */
   const demoBg = () => demoMode() || (!!S.table && !S.solo && S.phase === "idle") || S.phase === "over";
-  const demoDistAt = now => 400 + ((now / 1000) * 130) % 7000;
+  /* The backdrop scrolls on without end. It used to wrap every seven
+     thousand units, and the wrap was a visible jolt - the channel's shape
+     changed under the cursors in one frame, and everything cached for the
+     stretch ahead was thrown away and made again. */
+  const demoDistAt = now => 400 + (now / 1000) * 130;
   function demoInit() {
     if (DEMO.length) return;
     const tails = TAILS.filter(t => t.color);
