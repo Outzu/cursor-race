@@ -1895,18 +1895,29 @@
     im.onload = () => { a.still = im; cursorUrl = null; updateAppCursor(); };
     im.src = src;
 
-    if (window.ImageDecoder) (async () => {
-      const dec = new ImageDecoder({ data: await (await fetch(src)).arrayBuffer(), type: "image/webp" });
-      await dec.tracks.ready;
-      const track = dec.tracks.selectedTrack;
-      if (!track || !track.animated) return;
-      for (let i = 0; i < Math.min(track.frameCount, 64); i++) {
-        const f = await dec.decode({ frameIndex: i });
-        a.frames.push(await createImageBitmap(f.image));
-        const ms = (f.image.duration || 40000) / 1000;
-        a.durs.push(ms); a.total += ms;
-        f.image.close();
-      }
+    /* Only a WebP can be an animation here, so only a WebP goes to the
+       decoder: a PNG handed to it as WebP fails, and the decoder's own
+       completion promise - which nobody awaits - then fails in the console
+       as "Metadata decoding failed". */
+    const isData = src.startsWith("data:");
+    if (window.ImageDecoder && (!isData || src.startsWith("data:image/webp"))) (async () => {
+      const r = await fetch(src);
+      const type = isData ? "image/webp" : String(r.headers.get("content-type") || "").split(";")[0].trim();
+      if (type !== "image/webp") return;
+      const dec = new ImageDecoder({ data: await r.arrayBuffer(), type });
+      dec.completed.catch(() => {});
+      try {
+        await dec.tracks.ready;
+        const track = dec.tracks.selectedTrack;
+        if (!track || !track.animated) return;
+        for (let i = 0; i < Math.min(track.frameCount, 64); i++) {
+          const f = await dec.decode({ frameIndex: i });
+          a.frames.push(await createImageBitmap(f.image));
+          const ms = (f.image.duration || 40000) / 1000;
+          a.durs.push(ms); a.total += ms;
+          f.image.close();
+        }
+      } finally { try { dec.close(); } catch (e) {} }
     })().catch(() => {});
     return a;
   }
@@ -4700,7 +4711,7 @@
      merely warming up gets its sharpness back and one that cannot cope
      stays where it can keep up. Stalls - a tab in the background, a
      dialog - are not counted; nothing is learnt from them. */
-  let perfTier = 0, frameAvg = 16, perfSince = 0, perfLastUp = 0, prevFrame = 0, quietSince = 0;
+  let perfTier = 0, frameAvg = 16, perfSince = 0, perfLastUp = 0, prevFrame = 0, quietSince = 0, upWait = 60000;
   const PERF = [{ dpr: 2, sparks: 1 }, { dpr: 1.5, sparks: 1 }, { dpr: 1, sparks: 0.5 }];
   function setPerfTier(t) {
     perfTier = Math.max(0, Math.min(PERF.length - 1, t));
@@ -4718,12 +4729,17 @@
     if (frameAvg > budget * 1.25) {
       quietSince = 0;
       if (!perfSince) perfSince = now;
-      else if (now - perfSince > 2000 && perfTier < PERF.length - 1) setPerfTier(perfTier + 1);
+      else if (now - perfSince > 2000 && perfTier < PERF.length - 1) {
+        // a notch up that did not hold means the machine is at its limit: each
+        // retry waits twice as long, so the picture is not re-fitted every minute
+        if (perfLastUp && now - perfLastUp < 30000) upWait = Math.min(600000, upWait * 2);
+        setPerfTier(perfTier + 1);
+      }
     } else {
       perfSince = 0;
       if (frameAvg < budget * 1.05 && perfTier > 0) {
         if (!quietSince) quietSince = now;
-        else if (now - quietSince > 20000 && now - perfLastUp > 60000) { perfLastUp = now; setPerfTier(perfTier - 1); }
+        else if (now - quietSince > 20000 && now - perfLastUp > upWait) { perfLastUp = now; setPerfTier(perfTier - 1); }
       } else quietSince = 0;
     }
   }
