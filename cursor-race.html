@@ -4706,6 +4706,7 @@
   const PERF = [{ dpr: 2, sparks: 1 }, { dpr: 1.5, sparks: 1 }, { dpr: 1, sparks: 0.5 }];
   function setPerfTier(t) {
     perfTier = Math.max(0, Math.min(PERF.length - 1, t));
+    console.info("[cursorclash] sharpness " + PERF[perfTier].dpr + "x (frames averaging " + Math.round(frameAvg) + " ms)");
     dprCap = PERF[perfTier].dpr;
     fit();
     perfSince = 0; quietSince = 0;
@@ -4736,7 +4737,32 @@
   }
   const perfWord = () => perfTier ? " · " + Math.round(1000 / frameAvg) + " fps · eco" + perfTier : "";
 
+  /* A stall seen on somebody's own machine is written to the console with
+     what filled it, so it can be told apart without a profiler: our own
+     script (and which function), the page's style and layout, or nothing on
+     the page at all - the browser, the graphics card, the system. A third
+     of a second is the line: well past a dropped frame, short of a hang. */
+  const stallWhere = () => "phase " + S.phase + ", sharpness " + PERF[perfTier].dpr + "x, head " + S.skin +
+    (document.body.classList.contains("focus") ? ", racing view" : ", home view");
+  let shownAt = 0;
+  document.addEventListener("visibilitychange", () => { shownAt = performance.now(); });
+  try {
+    new PerformanceObserver(list => {
+      for (const e of list.getEntries()) {
+        if (e.duration < 330 || document.hidden || e.startTime < shownAt) continue;
+        const end = e.startTime + e.duration;
+        const scripts = (e.scripts || []).filter(x => x.duration >= 15).sort((a, b) => b.duration - a.duration).slice(0, 5)
+          .map(x => (x.sourceFunctionName || x.invoker || "?") + " " + Math.round(x.duration) + " ms");
+        console.warn("[cursorclash] stall: one frame took " + Math.round(e.duration) + " ms - script " +
+          (scripts.join(", ") || "under 15 ms") + "; style and layout " + (e.styleAndLayoutStart ? Math.round(end - e.styleAndLayoutStart) : 0) +
+          " ms; drawing " + (e.renderStart ? Math.round(end - e.renderStart) : 0) + " ms (" + stallWhere() + ")");
+      }
+    }).observe({ type: "long-animation-frame", buffered: false });
+  } catch (e) {}
   function frame(now) {
+    const gap = lastFrameAt ? now - lastFrameAt : 0;
+    if (gap > 330 && gap < 20000 && !document.hidden && lastFrameAt > shownAt)   // a tab coming back is not a stall
+      console.warn("[cursorclash] stall: no frame for " + Math.round(gap) + " ms (" + stallWhere() + ")");
     lastFrameAt = now;
     watchFrames(now);
     kickIdle(now);
