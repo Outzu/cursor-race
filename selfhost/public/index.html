@@ -6076,19 +6076,17 @@
     if (Math.abs(o.x) < 0.3 && Math.abs(o.y) < 0.3) { o.x = 0; o.y = 0; }
     S.cx = Math.max(R, Math.min(W - R, S.cx - dx)); S.cy = Math.max(R, Math.min(H - R, S.cy - dy));
   }
-  /* Where a rocket fired from (x, u0) meets something, and the way there. It
-     flies up the channel rather than up the screen: it keeps its distance
-     from the channel's middle as the channel bends, so a bend never puts it
-     into the wall before it reaches what is in the way. Walked in small
-     steps; the points are kept so the flight can be drawn along them. */
-  function rocketPath(x0, u0) {
-    const top = S.dist + H + 20, wd = S.world, off = x0 - centerX(u0, wd);
-    const pts = [[x0, u0]];
+  /* Where a rocket fired straight up from (x, u0) meets something, and the
+     way there: a gate bar, an obstacle, the wall where the channel bends
+     across its line, or the top of the screen. Walked in small steps; the
+     points are kept so the flight can be drawn along them. */
+  function rocketPath(x, u0) {
+    const top = S.dist + H + 20, wd = S.world;
+    const pts = [[x, u0]];
     const done = (u, kind, key) => ({ u, kind, key, pts });
     for (let u = u0 + 6; u < top; u += 6) {
-      const c = centerX(u, wd), hw = halfW(u);
-      const x = c + Math.max(-(hw - 10), Math.min(hw - 10, off));
       pts.push([x, u]);
+      if (Math.abs(x - centerX(u, wd)) > halfW(u) - 4) return done(u, "wall");
       const k = Math.round((u - GATE_START) / GATE_SPACE);
       if (k >= 0 && !S.gatesOff.has(k)) {
         const g = gateAt(k, wd);
