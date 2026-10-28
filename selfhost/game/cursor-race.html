@@ -1926,16 +1926,16 @@
       c.strokeStyle = "rgba(7,11,22,.7)"; c.lineWidth = 1.4; c.stroke();
       c.restore();
     } },
-    { id: "ring", name: "Ring", cost: 40, draw(c, x, y, col) {
+    { id: "ring", name: "Ring", cost: 300, draw(c, x, y, col) {
       c.strokeStyle = col; c.lineWidth = 2.5; c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
     } },
-    { id: "dot", name: "Dot", cost: 90, draw(c, x, y, col) {
+    { id: "dot", name: "Dot", cost: 700, draw(c, x, y, col) {
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 6.5, 0, TAU); c.fill();
       c.strokeStyle = withA(col, .45); c.lineWidth = 2;
       c.beginPath(); c.arc(x, y, 11, 0, TAU); c.stroke();
     } },
-    { id: "cross", name: "Cross", cost: 160, draw(c, x, y, col) {
+    { id: "cross", name: "Cross", cost: 1300, draw(c, x, y, col) {
       c.strokeStyle = col; c.lineWidth = 2; c.beginPath();
       const arms = [[1, 0], [-1, 0], [0, 1], [0, -1]];
       for (const a of arms) { c.moveTo(x + a[0] * 5, y + a[1] * 5); c.lineTo(x + a[0] * 14, y + a[1] * 14); }
@@ -1944,7 +1944,7 @@
       c.beginPath(); c.arc(x, y, 9, 0, TAU); c.stroke();
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 2.2, 0, TAU); c.fill();
     } },
-    { id: "blade", name: "Blade", cost: 260, draw(c, x, y, col, now) {
+    { id: "blade", name: "Blade", cost: 2200, draw(c, x, y, col, now) {
       c.save(); c.translate(x, y); c.rotate(now / 260); c.fillStyle = col;
       for (let i = 0; i < 3; i++) {
         c.rotate(TAU / 3);
@@ -1954,7 +1954,7 @@
       c.fillStyle = "#070b16"; c.beginPath(); c.arc(x, y, 3.4, 0, TAU); c.fill();
       c.strokeStyle = col; c.lineWidth = 1.6; c.beginPath(); c.arc(x, y, 3.4, 0, TAU); c.stroke();
     } },
-    { id: "comet", name: "Comet", cost: 560, draw(c, x, y, col, now) {
+    { id: "comet", name: "Comet", cost: 5200, draw(c, x, y, col, now) {
       for (let i = 3; i >= 1; i--) {
         c.fillStyle = withA(col, .15 * i);
         c.beginPath(); c.arc(x, y + i * 5.5, 6.5 - i * 1.3, 0, TAU); c.fill();
@@ -1966,7 +1966,7 @@
         c.beginPath(); c.arc(x + Math.cos(t) * 12, y + Math.sin(t) * 12, 1.8, 0, TAU); c.fill();
       }
     } },
-    { id: "prism", name: "Prism", cost: 760, draw(c, x, y, col, now) {
+    { id: "prism", name: "Prism", cost: 7500, draw(c, x, y, col, now) {
       const tri = (r) => {
         c.beginPath();
         for (let i = 0; i < 3; i++) {
@@ -1981,7 +1981,7 @@
       c.save(); c.rotate(-now / 430); c.fillStyle = col; tri(5.5); c.fill(); c.restore();
       c.restore();
     } },
-    { id: "halo", name: "Halo", cost: 1000, draw(c, x, y, col, now) {
+    { id: "halo", name: "Halo", cost: 10500, draw(c, x, y, col, now) {
       const p = 1 + 0.12 * Math.sin(now / 240);
       c.strokeStyle = withA(col, .38); c.lineWidth = 2;
       c.beginPath(); c.arc(x, y, 14 * p, 0, TAU); c.stroke();
@@ -1991,7 +1991,7 @@
       const t = now / 420;
       c.beginPath(); c.arc(x + Math.cos(t) * 17, y + Math.sin(t) * 17, 2.6, 0, TAU); c.fill();
     } },
-    { id: "glow", name: "Glow", cost: 400, draw(c, x, y, col) {
+    { id: "glow", name: "Glow", cost: 3500, draw(c, x, y, col) {
       c.save();
       halo(c, x, y, col, 19);
       c.fillStyle = col; c.beginPath(); c.arc(x, y, 7, 0, TAU); c.fill();
@@ -1999,7 +1999,7 @@
       c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
       c.restore();
     } },
-    { id: "spectrum", name: "Spectrum", cost: 1300, draw(c, x, y, col, now) {
+    { id: "spectrum", name: "Spectrum", cost: 14500, draw(c, x, y, col, now) {
       const hc = "hsl(" + ((now / 7) % 360) + " 95% 62%)";
       c.save();
       halo(c, x, y, hc, 21);
@@ -2008,7 +2008,7 @@
       c.beginPath(); c.arc(x, y, 3, 0, TAU); c.fill();
       c.restore();
     } },
-    { id: "bullion", name: "Bullion", cost: 1700, draw(c, x, y, col, now) {
+    { id: "bullion", name: "Bullion", cost: 19500, draw(c, x, y, col, now) {
       c.save();
       halo(c, x, y, "#ffcf5c", 23);
       const g = c.createRadialGradient(x - 2.5, y - 2.5, 0.5, x, y, 8.5);
@@ -2028,7 +2028,7 @@
        keep their ids: a pilot who bought one still has one. */
     /* Inferno: a head of black glass with lava showing through the cracks,
        breathing, and embers coming off it. */
-    { id: "kamish", name: "Inferno", cost: 2000, size: 46, draw(c, x, y, col, now) {
+    { id: "kamish", name: "Inferno", cost: 25500, size: 46, draw(c, x, y, col, now) {
       c.save(); c.translate(x, y);
       halo(c, 0, 0, "#ff5a1f", 20);
       c.beginPath(); c.moveTo(0, -16); c.lineTo(11, 8); c.lineTo(0, 3); c.lineTo(-11, 8); c.closePath();
@@ -2052,7 +2052,7 @@
       c.restore();
     } },
     /* Tide: a drop of water, lit from one side, with smaller drops circling. */
-    { id: "azure", name: "Tide", cost: 2400, size: 46, draw(c, x, y, col, now) {
+    { id: "azure", name: "Tide", cost: 32500, size: 46, draw(c, x, y, col, now) {
       c.save(); c.translate(x, y);
       halo(c, 0, 0, "#4da6ff", 20);
       c.beginPath(); c.moveTo(0, -14); c.bezierCurveTo(9, -2, 9, 8, 0, 9); c.bezierCurveTo(-9, 8, -9, -2, 0, -14); c.closePath();
@@ -2069,7 +2069,7 @@
     } },
     /* Pixel Blade: a sword drawn a pixel at a time, point up, with a glint
        running down the edge. Ours, not anybody's game's. */
-    { id: "mcsword", name: "Pixel Blade", cost: 2800, size: 60, draw(c, x, y, col, now) {
+    { id: "mcsword", name: "Pixel Blade", cost: 40000, size: 60, draw(c, x, y, col, now) {
       const cell = 3.5, cols = 7;
       const rows = [
         "...W...", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..", "..WLW..",
@@ -2092,7 +2092,7 @@
        flies like a rocket: nose first, flame behind, swinging round its own
        centre as the hand changes direction. Where nothing is dragging it -
        the shop, the page cursor - it points up. */
-    { id: "phoenix", name: "Phoenix", cost: 3200, size: 68, draw(c, x, y, col, now, heading) {
+    { id: "phoenix", name: "Phoenix", cost: 49000, size: 68, draw(c, x, y, col, now, heading) {
       c.save(); c.translate(x, y);
       c.rotate((heading == null ? -Math.PI / 2 : heading) + Math.PI / 2);
       const tongue = (ox, len, w, ph, fill) => {
@@ -2124,7 +2124,7 @@
     /* A black disc over a blazing corona: the light is all round the edge,
        with four flare spikes turning slowly behind it and a thin rim in the
        pilot's colour so it still reads as theirs. */
-    { id: "eclipse", name: "Eclipse", cost: 3600, size: 56, draw(c, x, y, col, now) {
+    { id: "eclipse", name: "Eclipse", cost: 60000, size: 56, draw(c, x, y, col, now) {
       c.save(); c.translate(x, y);
       const breathe = 1 + .06 * Math.sin(now / 300);
       const g = c.createRadialGradient(0, 0, 7, 0, 0, 20 * breathe);
@@ -2145,7 +2145,33 @@
       c.strokeStyle = "rgba(255,244,214,.9)"; c.lineWidth = 1.2;
       c.beginPath(); c.arc(0, 0, 9.6, -2.4 + now / 900, -.6 + now / 900); c.stroke();   // the bright edge
       c.restore();
-    } }
+    } },
+    /* A gift for signing in with Google, with the Suits tail: free, and
+       nobody else's. A playing card, tilted as if thrown. */
+    { id: "ace", name: "Ace of Hearts", cost: 0, gift: "google", size: 48, draw(c, x, y, col, now) {
+      /* a red heart in a red glow, as a card prints it rather than as a
+         valentine draws it - two round lobes and two straight sides to a
+         sharp point - and point up, the way a cursor leads. The glow is laid
+         as widening strokes, the way the rest of the game does it. */
+      c.save(); c.translate(x, y); c.rotate(Math.PI);
+      const r = 10;
+      const heart = () => {
+        c.beginPath();
+        c.moveTo(0, r * 1.05);                                       // the point
+        c.lineTo(-r * 0.98, -r * 0.05);                               // straight side up to the left lobe
+        c.arc(-r * 0.49, -r * 0.42, r * 0.56, Math.PI * 0.82, Math.PI * 1.98);   // left lobe
+        c.arc(r * 0.49, -r * 0.42, r * 0.56, Math.PI * 1.02, Math.PI * 2.18);    // right lobe
+        c.lineTo(0, r * 1.05);
+        c.closePath();
+      };
+      c.lineJoin = "round";
+      const pulse = 0.75 + 0.25 * Math.sin(now / 420);
+      for (const [w, a] of [[14, .07], [10, .12], [6, .2], [3, .3]]) {
+        heart(); c.strokeStyle = "rgba(255,45,85," + (a * pulse).toFixed(3) + ")"; c.lineWidth = w; c.stroke();
+      }
+      heart(); c.fillStyle = "#ff2d55"; c.fill();
+      c.restore();
+    } },
   ];
   const skinById = id => SKINS.find(s => s.id === id) || SKINS[0];
   /* What the glowing heads had as a canvas shadow, which is blurred in
@@ -2168,77 +2194,84 @@
     { id: "none", name: "None", cost: 0 },
     { id: "wisp", name: "Wisp", cost: 0, width: 3, plain: true,
       color: (f, col) => withA(col, .1 + .3 * f) },
-    { id: "flare", name: "Flare", cost: 80, width: 9,
+    { id: "flare", name: "Flare", cost: 150, width: 9,
       color: (f, col) => (f > .82 ? "#ffffff" : col),         // white hot at the head
       spark: { rate: 30, life: 800, size: 2.4, spread: 40, shape: "streak", color: col => col } },
-    { id: "bubble", name: "Bubble", cost: 120, width: 5,
+    { id: "bubble", name: "Bubble", cost: 300, width: 5,
       color: (f, col) => withA(col, .08 + .3 * f),
       spark: { rate: 14, life: 2000, size: 4.5, spread: 18, grow: true, shape: "ring",
                drift: 60, sway: 7, color: col => withA(col, .8) } },
-    { id: "snowflake", name: "Snowflake", cost: 180, width: 6,
+    { id: "snowflake", name: "Snowflake", cost: 550, width: 6,
       color: (f, col) => "rgba(214,238,255," + (0.08 + 0.3 * f).toFixed(2) + ")",
       spark: { rate: 20, life: 2600, size: 4.2, spread: 12, shape: "flake",
                drift: -55, sway: 11,
                color: () => "rgba(230,246,255,.9)" } },
-    { id: "gold", name: "Gold", cost: 220, width: 10,
+    { id: "gold", name: "Gold", cost: 900, width: 10,
       color: f => (f > .62 ? "#ffeeb0" : f > .3 ? "#ffc33d" : "#b8780f"),
       spark: { rate: 30, life: 1700, size: 3.6, spread: 24, twinkle: true, shape: "diamond",
                color: () => "#ffe9a3" } },
     /* The rainbow as it first was: one ribbon running through the hues
        along its length, shedding dots in whatever colour the moment has. */
-    { id: "rainbow2", name: "Rainbow 2", cost: 260, width: 10,
+    { id: "rainbow2", name: "Rainbow 2", cost: 1400, width: 10,
       color: (f, col, now) => "hsl(" + (((1 - f) * 300 + now / 7) % 360) + " 95% 60%)",
       spark: { rate: 32, life: 1200, size: 2.5, spread: 52,
                color: (col, now) => "hsl(" + ((now / 3) % 360) + " 95% 65%)" } },
-    { id: "ember", name: "Ember", cost: 300, width: 9,
+    { id: "ember", name: "Ember", cost: 2000, width: 9,
       color: f => (f > .75 ? "#ffd166" : f > .4 ? "#ff7a1a" : "#8a1c0c"),
       spark: { rate: 40, life: 1400, size: 2.2, spread: 22, twinkle: true,
                drift: -40, sway: 4,                               // embers rise and waver
                color: () => "hsl(" + (8 + Math.random() * 38) + " 100% " + (52 + Math.random() * 14) + "%)" } },
-    { id: "fairydust", name: "Fairydust", cost: 350, width: 6,
+    { id: "fairydust", name: "Fairydust", cost: 2800, width: 6,
       color: (f, col, now) => "hsla(" + ((now / 14 + f * 90) % 360) + " 90% 78% / " + (0.1 + 0.5 * f).toFixed(2) + ")",
       spark: { rate: 44, life: 1700, size: 2.4, spread: 26, twinkle: true, shape: "star",
                drift: -22, sway: 5,
                color: () => "hsl(" + (300 + Math.random() * 110) % 360 + " 95% 80%)" } },
-    { id: "petals", name: "Petals", cost: 400, width: 7,
+    { id: "petals", name: "Petals", cost: 3800, width: 7,
       color: (f, col) => "rgba(255,170,200," + (0.1 + 0.4 * f).toFixed(2) + ")",
       spark: { rate: 18, life: 2800, size: 3.4, spread: 16, shape: "petal",
                drift: -30, sway: 14,                              // falling, and tumbling as they go
                color: () => (Math.random() < .5 ? "rgba(255,183,206,.9)" : "rgba(255,230,240,.9)") } },
-    { id: "sparks", name: "Sparks", cost: 450, width: 7,
+    { id: "sparks", name: "Sparks", cost: 5000, width: 7,
       color: (f, col) => col,
       spark: { rate: 64, life: 750, size: 3, spread: 150, fall: true, shape: "streak",
                color: col => (Math.random() < .3 ? "#fff3c4" : col) } },   // some burn white
-    { id: "confetti", name: "Confetti", cost: 480, width: 6,
+    { id: "confetti", name: "Confetti", cost: 6500, width: 6,
       color: (f, col) => withA("#ffffff", .08 + .35 * f),
       spark: { rate: 30, life: 2200, size: 2.6, spread: 40, shape: "confetti",
                drift: -35, sway: 9,
                color: () => "hsl(" + Math.floor(Math.random() * 360) + " 90% 62%)" } },
     /* The ribbon itself is thrown about: every point is pushed off the line
        by a jitter that changes frame to frame, so it crackles. */
-    { id: "volt", name: "Volt", cost: 520, width: 7, jag: 7,
+    { id: "volt", name: "Volt", cost: 8500, width: 7, jag: 7,
       color: f => (f > .7 ? "#ffffff" : "#7df9ff"),
       spark: { rate: 40, life: 500, size: 2.4, spread: 120, shape: "streak",
                color: () => (Math.random() < .4 ? "#ffffff" : "#7df9ff") } },
-    { id: "canvas", name: "Canvas", cost: 600, width: 16, plain: true,
+    { id: "canvas", name: "Canvas", cost: 11500, width: 16, plain: true,
       color: (f, col) => withA(col, .5),
       spark: { rate: 26, life: 2600, size: 7, spread: 9, grow: true,
                color: col => withA(col, .16) } },
-    { id: "galaxy", name: "Galaxy", cost: 650, width: 12,
+    { id: "galaxy", name: "Galaxy", cost: 15000, width: 12,
       color: f => "hsl(" + (255 + 35 * f) + " 80% " + (30 + 28 * f) + "%)",   // violet deepening to blue
       spark: { rate: 40, life: 1900, size: 2.2, spread: 30, twinkle: true, shape: "star",
                drift: 10, sway: 3,
                color: () => ["#ffffff", "#9db4ff", "#d9a8ff", "#fff3b0"][Math.floor(Math.random() * 4)] } },
-    { id: "smoke", name: "Smoke", cost: 700, width: 12,
+    { id: "smoke", name: "Smoke", cost: 19500, width: 12,
       color: (f, col) => withA(col, .2 + .35 * f),
       spark: { rate: 16, life: 2400, size: 4.2, spread: 14, grow: true, shape: "puff",
                drift: 30, sway: 6, color: col => withA(col, .35) } },
     /* The one to save up for: six ribbons side by side, their hues rolling
        along the length, with stars thrown off in every colour at once. */
-    { id: "rainbow", name: "Rainbow", cost: 900, width: 14, bands: 6,
+    { id: "rainbow", name: "Rainbow", cost: 25000, width: 14, bands: 6,
       color: (f, col, now) => "hsl(" + ((now / 7) % 360) + " 95% 60%)",
       spark: { rate: 36, life: 1300, size: 2.8, spread: 56, twinkle: true, shape: "star",
-               color: (col, now) => "hsl(" + ((now / 3 + Math.random() * 60) % 360) + " 95% 65%)" } }
+               color: (col, now) => "hsl(" + ((now / 3 + Math.random() * 60) % 360) + " 95% 65%)" } },
+    /* The Ace of Hearts' tail, the other half of the gift: red and black
+       chevrons running down a glowing ribbon, shedding hearts and diamonds in
+       red and spades and clubs in white. */
+    { id: "suits", name: "Suits", cost: 0, gift: "google", width: 11,
+      color: (f, col, now) => (((1 - f) * 7 + now / 260) % 2 < 1 ? "#ff2d55" : "#2a2733"),
+      spark: { rate: 22, life: 1500, size: 4, spread: 26, twinkle: true, shape: "suit", sway: 5,
+               color: () => (Math.random() < 0.5 ? "#ff2d55" : "#f4f4f8") } },
   ];
   const tailById = id => TAILS.find(t => t.id === id) || TAILS[0];
 
@@ -2285,12 +2318,12 @@
       g.stroke();
     } },
 
-    { id: "meadow", name: "Meadow", cost: 300, floor: "#0e2213", image: ART_GRASS, tile: 256, paint(g, n) {
+    { id: "meadow", name: "Meadow", cost: 2000, floor: "#0e2213", image: ART_GRASS, tile: 256, paint(g, n) {
       // until the picture has decoded - a frame or two, once
       g.fillStyle = "#3f8f1f"; g.fillRect(0, 0, n, n);
     } },
 
-    { id: "atlas", name: "Atlas", cost: 800, floor: "#141c2e", paint(g, n) {
+    { id: "atlas", name: "Atlas", cost: 6000, floor: "#141c2e", paint(g, n) {
       g.fillStyle = "#1d2639"; g.fillRect(0, 0, n, n);
       g.strokeStyle = "rgba(120,140,180,.10)"; g.lineWidth = 1;
       for (let k = 0; k <= n; k += 16) {                 // the grid a map is printed on
@@ -2308,7 +2341,7 @@
       }
     } },
 
-    { id: "neon", name: "Neon", cost: 1500, floor: "#0b0718", paint(g, n) {
+    { id: "neon", name: "Neon", cost: 14000, floor: "#0b0718", paint(g, n) {
       g.fillStyle = "#120c22"; g.fillRect(0, 0, n, n);
       g.strokeStyle = "rgba(255,62,165,.20)"; g.lineWidth = 1;
       for (let k = 0; k <= n; k += 16) { g.beginPath(); g.moveTo(k, 0); g.lineTo(k, n); g.stroke(); }
@@ -2320,7 +2353,7 @@
       });
     } },
 
-    { id: "streets", name: "Streets", cost: 2500, floor: "#15171f", paint(g, n) {
+    { id: "streets", name: "Streets", cost: 25000, floor: "#15171f", paint(g, n) {
       g.fillStyle = "#1a1e29"; g.fillRect(0, 0, n, n);
       sprinkle(g, "streets-block", 52, (c, x, y, a, b) => {
         c.fillStyle = a > .6 ? "#232838" : "#1f2332";
@@ -2581,7 +2614,8 @@
   function groundPattern() { return patternFor(groundById(S.ground), ctx); }
   const byKind = kind => kind === "skins" ? skinById : kind === "tails" ? tailById : groundById;
   /* free items are everyone's; the rest are bought and remembered */
-  const owns = (item, kind) => !!item && (item.cost === 0 || S.owned[kind].has(item.id));
+  /* free things are everybody's; a gift is a signed-in account's; the rest is bought */
+  const owns = (item, kind) => !!item && ((item.cost === 0 && !item.gift) || (item.gift && S.canBuy) || S.owned[kind].has(item.id));
   /* an armed item is worn on the pilot page only — never in a race, never to
      other players, and never saved until it is actually bought */
   const previewing = () => S.buying && document.body.classList.contains("settings");
@@ -2746,6 +2780,23 @@
       c.scale(1, .4 + .6 * Math.abs(Math.sin(now / 260 + p.born)));   // seen edge-on, then flat
       c.fillStyle = p.col;
       c.fillRect(-r * 1.3, -r * .7, r * 2.6, r * 1.4);
+      c.restore();
+      return;
+    }
+    if (shape === "suit") {
+      /* a card sign: red ones are hearts and diamonds, white ones spades and clubs */
+      const red = p.col === "#ff2d55", which = Math.floor(p.born / 37) % 2;
+      c.save(); c.translate(x, y); c.rotate(Math.sin(now / 400 + p.born) * .25); c.fillStyle = p.col;
+      const heart = (sy, k) => {
+        c.beginPath();
+        c.moveTo(0, sy + r * k); c.bezierCurveTo(r * 1.15 * k, sy - r * 0.1 * k, r * 1.15 * k, sy - r * 0.9 * k, 0, sy - r * 0.35 * k);
+        c.bezierCurveTo(-r * 1.15 * k, sy - r * 0.9 * k, -r * 1.15 * k, sy - r * 0.1 * k, 0, sy + r * k);
+        c.closePath(); c.fill();
+      };
+      if (red && which === 0) heart(0, 1);
+      else if (red) { c.beginPath(); c.moveTo(0, -r * 1.1); c.lineTo(r * .75, 0); c.lineTo(0, r * 1.1); c.lineTo(-r * .75, 0); c.closePath(); c.fill(); }
+      else if (which === 0) { heart(-r * .15, -0.9); c.fillRect(-r * .18, r * .25, r * .36, r * .75); }
+      else { for (const [cx, cy] of [[0, -r * .5], [-r * .55, r * .25], [r * .55, r * .25]]) { c.beginPath(); c.arc(cx, cy, r * .5, 0, TAU); c.fill(); } c.fillRect(-r * .16, r * .2, r * .32, r * .8); }
       c.restore();
       return;
     }
@@ -3817,6 +3868,13 @@
       if (!db || !user) return;
       const me = await user.me().catch(() => null);
       S.canBuy = !!(me && me.guest !== true);   // a signed-in account, not a guest
+      /* the gift, mentioned once: the ace and its tail are theirs to pick */
+      try {
+        if (S.canBuy && !localStorage.getItem("cc_gift_said")) {
+          localStorage.setItem("cc_gift_said", "1");
+          say("signed in: the Ace of Hearts cursor and the Suits tail are yours - find them under Pilot & cursor");
+        }
+      } catch (e) {}
       const uid = await user.id();
       if (!uid) return;
       S.db = db; S.uid = uid; S.me = uid;
@@ -4491,7 +4549,8 @@
       /* The countdown cue is for a gate other people are walking through.
          A single-player run has no gate to speak of - it is three seconds and
          away - so it gets the start and nothing before it. */
-      if (S.phase === "open" && !S.solo) sfx("prepare");
+      // the gate cue, single player included: drawn from the race, or from the clock where a run has no id
+      if (S.phase === "open") { S.gateCue = gateCueFor(S.rid || String(Date.now())); decodeCue(S.gateCue); sfx(S.gateCue); }
       else if ((S.phase === "racing" || S.phase === "watching") && was === "open") sfx("go");
     }
     if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
@@ -4888,6 +4947,10 @@
      quiet for the first quarter minute, then one every twenty five to forty
      five seconds. A minute's run hears two. */
   const TAUNTS = 16;
+  /* The cue at the gate: one of everything we have, the countdown cue or any
+     of the jeers, drawn from the race so every pilot at the table hears the
+     same one - and a different one at the next race. */
+  const gateCueFor = rid => { const n = hashStr(String(rid || "") + ":gate") % (TAUNTS + 1); return n === 0 ? "prepare" : "taunt" + (n - 1); };
   const TAUNT_CLEAR = 12;                   // a quiet run-in first, in seconds
   const TAUNT_MIN = 25, TAUNT_MAX = 45;
   function tauntsFor(wd) {
@@ -4987,7 +5050,7 @@
   function sfx(which, boost) {
     const buf = actx && sfxBuf[which];
     if (isBuf(buf)) {
-      if (which === "go" && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }
+      if (which === "go" && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }   // the gate cue gives way to the start
       const src = actx.createBufferSource();
       src.buffer = buf;
       const g = actx.createGain();
@@ -4995,7 +5058,7 @@
       g.gain.value = boost > 1 ? Math.min(3, musicVol * CUE_LEVEL * boost) : Math.min(1, musicVol * CUE_LEVEL);
       src.connect(g).connect(actx.destination);
       try { src.start(); } catch (e) {}
-      if (which === "prepare") prepareSrc = src;
+      if (which === S.gateCue) prepareSrc = src;
       return;
     }
     /* The button in the corner is the lobby music's, and only the music's.
@@ -5010,7 +5073,7 @@
        it now; what makes them carry is the music ducking out of the way, not
        the cue being loud. */
     a.volume = Math.min(1, musicVol * CUE_LEVEL);   // nothing to compete with
-    if (which === "go" && sfxEl.prepare) { try { sfxEl.prepare.pause(); } catch (e) {} }
+    if (which === "go" && S.gateCue && sfxEl[S.gateCue]) { try { sfxEl[S.gateCue].pause(); } catch (e) {} }
     try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
 
   }
@@ -6486,10 +6549,10 @@
       return '<button class="skin' + (have ? "" : " locked") + (afford ? " afford" : "") +
         (armed ? " armed" : "") + '" data-id="' + s.id + '"' +
         (have ? ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"'
-              : ' aria-label="' + esc(s.name) + ', costs ' + s.cost + '"') +
+              : ' aria-label="' + esc(s.name) + (s.gift ? ', free when signed in' : ', costs ' + s.cost) + '"') +
         '><canvas width="136" height="136"></canvas>' +
         (have ? "" : LOCK) +
-        '<span class="lbl">' + (have ? esc(s.name) : s.cost) + '</span></button>';
+        '<span class="lbl">' + (have ? esc(s.name) : s.gift ? "Free &middot; sign in to claim" : s.cost) + '</span></button>';
     }).join("");
     host.querySelectorAll("canvas").forEach((c, i) => previews.push({ c, item: items[i] }));
   }
@@ -6503,6 +6566,7 @@
       return mine >= all ? "you own them all" : "tap a locked one to buy it";
     }
     const item = byKind(kind)(S.buying.id);
+    if (item.gift) return "free - sign in with google to claim it";
     if (!S.canBuy) return "sign in with google to buy";
     if (purse < item.cost) return (item.cost - purse) + " more " + unit + " for " + item.name.toLowerCase();
     return '<button class="buy" data-buy="' + kind + '">Buy ' + esc(item.name) +

@@ -26,15 +26,15 @@ function maxDistAt(startedAt, now) {
    and this table kept charging the old numbers underneath. test/prices.test.js
    now reads the page and fails if the two ever drift again. */
 const SKIN_COST = {
-  arrow: 0, ring: 40, dot: 90, cross: 160, blade: 260, glow: 400,
-  comet: 560, prism: 760, halo: 1000, spectrum: 1300, bullion: 1700,
-  kamish: 2000, azure: 2400, mcsword: 2800,
-  phoenix: 3200, eclipse: 3600 };
-const TAIL_COST = { none: 0, wisp: 0, flare: 80, bubble: 120, snowflake: 180, gold: 220,
-  rainbow2: 260, ember: 300, fairydust: 350, petals: 400, sparks: 450, confetti: 480, volt: 520,
-  canvas: 600, galaxy: 650, smoke: 700, rainbow: 900 };
+  arrow: 0, ace: 0, ring: 300, dot: 700, cross: 1300, blade: 2200, glow: 3500,
+  comet: 5200, prism: 7500, halo: 10500, spectrum: 14500, bullion: 19500,
+  kamish: 25500, azure: 32500, mcsword: 40000,
+  phoenix: 49000, eclipse: 60000 };
+const TAIL_COST = { none: 0, wisp: 0, suits: 0, flare: 150, bubble: 300, snowflake: 550, gold: 900,
+  rainbow2: 1400, ember: 2000, fairydust: 2800, petals: 3800, sparks: 5000, confetti: 6500, volt: 8500,
+  canvas: 11500, galaxy: 15000, smoke: 19500, rainbow: 25000 };
 const GROUND_COST = {
-  plain: 0, meadow: 300, atlas: 800, neon: 1500, streets: 2500
+  plain: 0, meadow: 2000, atlas: 6000, neon: 14000, streets: 25000
 };
 
 module.exports = {
