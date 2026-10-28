@@ -1713,7 +1713,8 @@
       const off = ((u - GATE_START) % GATE_SPACE + GATE_SPACE) % GATE_SPACE;
       if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
       const room = Math.max(0, halfW(u) - MYST_R - 26);
-      list.push({ id: "m" + n + "-0", u, x: centerX(u, wd) + (rnd() * 2 - 1) * room, appearY: 40 + rnd() * 300 });
+      list.push({ id: "m" + n + "-0", u, x: centerX(u, wd) + (rnd() * 2 - 1) * room, appearY: 40 + rnd() * 300,
+                  solo: rnd() < 0.5 });             // alone, only half the coins are laid
     }
     if (mystCache.size > 80) mystCache.clear();
     mystCache.set(key, list);
@@ -1722,7 +1723,7 @@
   function mystNear(uMin, uMax, wd) {
     const out = [];
     for (let n = Math.max(1, Math.floor(uMin / MYST_EVERY) - 1); n <= Math.ceil(uMax / MYST_EVERY) + 1; n++) {
-      for (const m of mystForBucket(n, wd)) if (m.u > uMin && m.u < uMax) out.push(m);
+      for (const m of mystForBucket(n, wd)) if (m.u > uMin && m.u < uMax && (m.solo || !S.solo)) out.push(m);
     }
     return out;
   }
@@ -1747,7 +1748,7 @@
     if (list) return list;
     const rnd = mulberry32(hashStr(key));
     list = [];
-    if (n >= 1 && rnd() < 0.6) {
+    if (n >= 1 && rnd() < 0.3) {                    // one stretch in three or so: a power is a treat, not the road
       let u = (n + 0.2 + rnd() * 0.6) * SOLO_EVERY;
       const off = ((u - GATE_START) % GATE_SPACE + GATE_SPACE) % GATE_SPACE;
       if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
@@ -4562,7 +4563,10 @@
         }
         while (S.tauntNext < S.taunts.length && t >= S.taunts[S.tauntNext].t) {
           const which = S.taunts[S.tauntNext++].which;
-          if (S.tauntMute) continue;                    // the MP3 player: not for you
+          if (S.tauntMute) {                            // the MP3 player: this one is not for you, the next one is
+            S.tauntMute = false; S.tauntBoost = 1;      // a subwoofer aimed at it is spent on silence
+            continue;
+          }
           sfx(which, S.tauntBoost || 1);
           S.tauntBoost = 1;                             // the subwoofer spends itself on one
         }
@@ -5848,7 +5852,7 @@
     }
   }, {
     id: "mp3", name: "MP3 player",
-    blurb: "Switches the taunts off for you.",
+    blurb: "Switches the next taunt off for you.",
     draw(c, s) {
       c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
       // earbuds, behind
@@ -6023,7 +6027,7 @@
       tagNote({ poop: "dropped - whoever is behind you, beware", knife: "dropped - a tail is coming off", banana: "dropped - somebody is about to steer backwards" }[p.id]);
     } else if (p.id === "mp3") {
       S.tauntMute = true;
-      tagNote("taunts off for you");
+      tagNote("the next taunt is off for you");
     } else if (p.id === "sub") {
       if (S.solo) { tagNote("nobody to deafen but you"); return; }
       if (S.tableRoom) S.tableRoom.emit("power", { op: "boom" }).catch(() => {});
