@@ -597,8 +597,19 @@
   .power-tag img { width: 30px; height: 30px; display: block; }
   .power-tag small { color: var(--dim); font-size: 9px; letter-spacing: .08em; text-transform: none; }
   .power-tag.used small { color: var(--amber); }
-  .power-tag .more { padding: 2px 7px; border-radius: 999px; background: var(--amber); color: var(--void); font-size: 10px; font-weight: 700; font-style: normal; }
   /* what just happened to you: a line above the tag, gone in a few seconds */
+  /* the power just gained, flashed at the top of the channel for a moment */
+  .power-pop { position: absolute; top: 28px; left: 50%; transform: translateX(-50%); pointer-events: none; z-index: 5;
+    animation: powerpop 1.1s ease-out both; }
+  .power-pop img { width: 72px; height: 72px; display: block; }
+  @keyframes powerpop {
+    0% { opacity: 0; transform: translateX(-50%) scale(.4); }
+    18% { opacity: 1; transform: translateX(-50%) scale(1.15); }
+    32% { transform: translateX(-50%) scale(1); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translateX(-50%) scale(.9); }
+  }
+  @media (pointer: coarse) { .power-pop { top: 16px; } .power-pop img { width: 56px; height: 56px; } }
   .power-note { position: relative; margin-top: 8px; max-width: min(300px, 60vw);
     padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--void) 82%, transparent);
     box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--hot) 55%, transparent);
@@ -607,7 +618,6 @@
     .power-tag { width: 58px; height: 58px; padding: 0; border-radius: 50%; justify-content: center; margin-top: 10px; }
     .power-tag > span { display: none; }
     .power-tag img { width: 36px; height: 36px; }
-    .power-tag .more { position: absolute; top: -4px; right: -6px; }
     .power-note { max-width: min(260px, 70vw); font-size: 10px; }
   }
   .power-note img { width: 22px; height: 22px; vertical-align: middle; margin-right: 8px; }
@@ -1157,6 +1167,7 @@
         <div class="power-tag" id="powerTag" hidden></div>
         <div class="power-note" id="powerNote" hidden></div>
       </div>
+      <div class="power-pop" id="powerPop" hidden></div>
     </div>
   </div>
 
@@ -3841,13 +3852,30 @@
      the hand */
   function takeSolo(it) {
     if (it.kind === "rocket" || it.kind === "mp3") {
-      S.powers.push(it.kind);
       const p = powerById(it.kind);
-      hudNote(it.kind, "A " + p.name.toLowerCase() + ", picked up. " + (S.powers.length > 1 ? S.powers.length + " in hand." : "Yours to use."));
-      syncPowerTag(true);
+      hudNote(it.kind, "A " + p.name.toLowerCase() + ", picked up. " + gain(it.kind));
     } else sufferDrop({ kind: it.kind });
   }
-  /* a ? coin taken: a burst of gold, and for the taker another power in the queue */
+  /* A power gained: there is one in hand at a time, and the newest takes
+     the place of one not yet used. The picture flashes at the top of the
+     channel so it is seen without reading. Says what was let go, if anything. */
+  function gain(id) {
+    const old = S.powers.length ? powerById(S.powers[0]) : null;
+    S.powers.length = 0; S.powers.push(id);
+    powerPop(id);
+    syncPowerTag(true);
+    return old && old.id !== id ? "The " + old.name.toLowerCase() + " goes unused." : "Yours to use.";
+  }
+  let popTimer = 0;
+  function powerPop(id) {
+    const el = $("powerPop"), p = powerById(id);
+    if (!p) return;
+    el.hidden = true; el.innerHTML = powerImg(p, 72);
+    void el.offsetWidth;                            // so the animation starts over
+    el.hidden = false;
+    clearTimeout(popTimer); popTimer = setTimeout(() => { el.hidden = true; }, 1100);
+  }
+  /* a ? coin taken: a burst of gold, and for the taker a power in hand */
   function takeMyst(id, mine) {
     const m = mystById(id, S.world);
     if (m) burst(m.x, m.u, mine ? "#feb703" : "rgba(254,183,3,.45)", 14);
@@ -3855,9 +3883,7 @@
     // alone there is nobody to drop anything on, so the coin gives what can be used
     const pool = S.solo ? POWERS.filter(q => q.id === "rocket" || q.id === "mp3") : POWERS;
     const p = pool[Math.floor(Math.random() * pool.length)];
-    S.powers.push(p.id);
-    hudNote(p.id, "A " + p.name.toLowerCase() + " from the coin. " + (S.powers.length > 1 ? S.powers.length + " in hand, used in order." : "Yours to use."));
-    syncPowerTag(true);
+    hudNote(p.id, "A " + p.name.toLowerCase() + " from the coin. " + gain(p.id));
   }
 
   /* ---------- profile ---------- */
@@ -5740,7 +5766,7 @@
         '<div><b>The channel narrows and speeds up</b> the further you get.</div>' +
         '<div><b>Last cursor still inside takes the whole pot.</b></div>' +
         '<div><b>At the lights you are dealt a power</b> &mdash; rocket, poop, knife, banana, MP3 player or subwoofer, at random.</div>' +
-        '<div><b>A ? coin in the channel gives another</b>, at random. They queue up; a click uses the first in hand.</div>' +
+        '<div><b>A ? coin in the channel gives another</b>, at random. The newest replaces the one in hand, so use it before the next coin.</div>' +
         '<div><b>Opening a race starts a ' + S.gateSecs + ' second gate</b> &mdash; ' + ENTRY_FEE + ' coins a seat.</div>' +
         '<div><b>Every gate you clear pays 1 coin.</b> Coins buy cursors, and pay the entry.</div>' +
         '<div><b>Single player pays the same</b> &mdash; no entry, no pot, but the gates and gems are yours.</div>' +
@@ -5934,7 +5960,6 @@
     const p = powerById(S.powers[0]);
     if (!p) { tag.hidden = true; tag.innerHTML = ""; tag.className = "power-tag"; return; }   // nothing in hand, nothing shown
     tag.innerHTML = powerImg(p, 60) +
-      (S.powers.length > 1 ? '<i class="more">+' + (S.powers.length - 1) + '</i>' : '') +
       '<span>' + esc(p.name) + '<br><small>' + (TOUCH ? "tap to use" : "click or space to use") + '</small></span>';
     tag.className = "power-tag"; tag.hidden = false;
   }
@@ -5963,7 +5988,7 @@
     S.powers = []; S.dealtFor = null; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false; clearTimeout(S.tailTimer);
     S.rocket = null; S.blown = new Set(); S.booms = []; S.gatesOff = new Set(); S.gatesBlown = new Set();
     S.tauntMute = false; S.tauntBoost = 1; S.wipes = 0; S.slipUntil = 0; S.slipOff = { x: 0, y: 0 };
-    $("powerTag").classList.remove("used"); $("powerNote").hidden = true;
+    $("powerTag").classList.remove("used"); $("powerNote").hidden = true; $("powerPop").hidden = true;
   }
   function burst(x, u, col, n) {
     for (let i = 0; i < n; i++) {
