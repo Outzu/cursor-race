@@ -4635,9 +4635,9 @@
       /* The countdown cue is for a gate other people are walking through.
          A single-player run has no gate to speak of - it is three seconds and
          away - so it gets the start and nothing before it. */
-      // the gate cue, single player included: drawn from the race, or from the clock where a run has no id
-      if (S.phase === "open") { S.gateCue = gateCueFor(S.rid || String(Date.now())); decodeCue(S.gateCue); sfx(S.gateCue); }
-      else if ((S.phase === "racing" || S.phase === "watching") && was === "open") sfx("go");
+      // the countdown, then at green a sound drawn from the race - or from the clock where a run has no id
+      if (S.phase === "open") { S.startCue = startCueFor(S.rid || String(Date.now())); decodeCue(S.startCue); sfx("prepare"); }
+      else if ((S.phase === "racing" || S.phase === "watching") && was === "open") sfx(S.startCue || "go", 1, true);
     }
     if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
     if (now - lastRail > 140) {
@@ -5033,10 +5033,11 @@
      quiet for the first quarter minute, then one every twenty five to forty
      five seconds. A minute's run hears two. */
   const TAUNTS = 16;
-  /* The cue at the gate: one of everything we have, the countdown cue or any
-     of the jeers, drawn from the race so every pilot at the table hears the
-     same one - and a different one at the next race. */
-  const gateCueFor = rid => { const n = hashStr(String(rid || "") + ":gate") % (TAUNTS + 1); return n === 0 ? "prepare" : "taunt" + (n - 1); };
+  /* The sound at green: one of everything we have, the start horn or any of
+     the jeers, drawn from the race so every pilot at the table hears the same
+     one - and a different one at the next race. The countdown before it is
+     always the countdown. */
+  const startCueFor = rid => { const n = hashStr(String(rid || "") + ":start") % (TAUNTS + 1); return n === 0 ? "go" : "taunt" + (n - 1); };
   const TAUNT_CLEAR = 12;                   // a quiet run-in first, in seconds
   const TAUNT_MIN = 25, TAUNT_MAX = 45;
   function tauntsFor(wd) {
@@ -5133,10 +5134,10 @@
       { passive: true, once: true }));
 
   let prepareSrc = null;
-  function sfx(which, boost) {
+  function sfx(which, boost, start) {
     const buf = actx && sfxBuf[which];
     if (isBuf(buf)) {
-      if (which === "go" && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }   // the gate cue gives way to the start
+      if (start && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }   // the countdown gives way to the start
       const src = actx.createBufferSource();
       src.buffer = buf;
       const g = actx.createGain();
@@ -5144,7 +5145,7 @@
       g.gain.value = boost > 1 ? Math.min(3, musicVol * CUE_LEVEL * boost) : Math.min(1, musicVol * CUE_LEVEL);
       src.connect(g).connect(actx.destination);
       try { src.start(); } catch (e) {}
-      if (which === S.gateCue) prepareSrc = src;
+      if (which === "prepare") prepareSrc = src;
       return;
     }
     /* The button in the corner is the lobby music's, and only the music's.
@@ -5159,7 +5160,7 @@
        it now; what makes them carry is the music ducking out of the way, not
        the cue being loud. */
     a.volume = Math.min(1, musicVol * CUE_LEVEL);   // nothing to compete with
-    if (which === "go" && S.gateCue && sfxEl[S.gateCue]) { try { sfxEl[S.gateCue].pause(); } catch (e) {} }
+    if (start && sfxEl.prepare) { try { sfxEl.prepare.pause(); } catch (e) {} }
     try { a.currentTime = 0; a.play().catch(() => {}); } catch (e) {}
 
   }
@@ -5809,7 +5810,7 @@
     }
   }, {
     id: "knife", name: "Knife",
-    blurb: "Drops a blade. Who runs into it loses their tail.",
+    blurb: "Drops a blade. Who runs into it loses their tail for five seconds.",
     draw(c, s) {
       c.save(); c.translate(s / 2, s / 2); c.rotate(-Math.PI / 4); c.lineWidth = s * .05; c.strokeStyle = "#1b1030"; c.lineJoin = "round";
       // blade
@@ -5863,7 +5864,7 @@
     }
   }, {
     id: "banana", name: "Banana",
-    blurb: "Drops a peel. Who runs into it steers backwards for two seconds.",
+    blurb: "Drops a peel. Who runs into it steers backwards for a second.",
     draw(c, s) {
       c.lineWidth = s * .05; c.strokeStyle = "#3a2a06"; c.lineJoin = "round"; c.lineCap = "round";
       // the fruit, peeled bare at the top
@@ -5963,7 +5964,7 @@
   const DROP_R = 18;
   const pillarKey = p => p.u + ":" + p.x;
   function resetPowers() {
-    S.powers = []; S.dealtFor = null; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false;
+    S.powers = []; S.dealtFor = null; S.cleared = new Set(); S.drops = new Map(); S.tailCut = false; clearTimeout(S.tailTimer);
     S.rocket = null; S.blown = new Set(); S.booms = []; S.gatesOff = new Set(); S.gatesBlown = new Set();
     S.tauntMute = false; S.tauntBoost = 1; S.wipes = 0; S.slipUntil = 0; S.slipOff = { x: 0, y: 0 };
     $("powerTag").classList.remove("used"); $("powerNote").hidden = true;
@@ -5989,8 +5990,9 @@
       const hit = rocketPath(S.cx, uNow);
       if (hit.kind === "pillar") S.cleared.add(hit.key);
       if (hit.kind === "gate") S.gatesOff.add(hit.key);
-      S.rocket = { kind: hit.kind, key: hit.key, x0: S.cx, u0: uNow, x1: S.cx, u1: hit.u, t0: performance.now(),
-                   dur: Math.min(1000, 200 + (hit.u - uNow) * 0.9) };
+      const last = hit.pts[hit.pts.length - 1];
+      S.rocket = { kind: hit.kind, key: hit.key, pts: hit.pts, x1: last[0], u1: hit.u, t0: performance.now(),
+                   dur: Math.min(600, 140 + (hit.u - uNow) * 0.42) };     // quick: it is fired at something close
       tagNote(hit.kind === "pillar" ? "rocket away" : hit.kind === "gate" ? "rocket away - a gate is coming down" : "rocket away - straight into nothing");
     } else if (p.id === "poop" || p.id === "knife" || p.id === "banana") {
       if (S.solo) { tagNote("nobody behind you to drop it on"); return; }
@@ -6030,13 +6032,15 @@
       burst(S.cx, S.dist + H - S.cy, "#7a4a1e", 24);
       hudNote("poop", "You stepped in it: the run's coins and gems are gone.");
     } else if (it.kind === "banana") {
-      S.slipUntil = performance.now() + 2000;
+      S.slipUntil = performance.now() + 1000;
       burst(S.cx, S.dist + H - S.cy, "#ffd93d", 18);
-      hudNote("banana", "Banana! Your steering is backwards for two seconds.");
+      hudNote("banana", "Banana! Your steering is backwards for a second.");
     } else {
       S.tailCut = true;
       burst(S.cx, S.dist + H - S.cy, "#d9dfe9", 18);
-      hudNote("knife", "Your tail has been cut off.");
+      hudNote("knife", "Your tail has been cut off. It grows back in five seconds.");
+      clearTimeout(S.tailTimer);
+      S.tailTimer = setTimeout(() => { if (S.tailCut) { S.tailCut = false; pushPresence(true); } }, 5000);
     }
     pushPresence(true);
   }
@@ -6072,24 +6076,42 @@
     if (Math.abs(o.x) < 0.3 && Math.abs(o.y) < 0.3) { o.x = 0; o.y = 0; }
     S.cx = Math.max(R, Math.min(W - R, S.cx - dx)); S.cy = Math.max(R, Math.min(H - R, S.cy - dy));
   }
-  /* Where a rocket fired straight up from (x, u0) meets something: the wall,
-     a gate bar, an obstacle, or the top of the screen. Walked in small steps. */
-  function rocketPath(x, u0) {
-    const top = S.dist + H + 20, wd = S.world;
+  /* Where a rocket fired from (x, u0) meets something, and the way there. It
+     flies up the channel rather than up the screen: it keeps its distance
+     from the channel's middle as the channel bends, so a bend never puts it
+     into the wall before it reaches what is in the way. Walked in small
+     steps; the points are kept so the flight can be drawn along them. */
+  function rocketPath(x0, u0) {
+    const top = S.dist + H + 20, wd = S.world, off = x0 - centerX(u0, wd);
+    const pts = [[x0, u0]];
+    const done = (u, kind, key) => ({ u, kind, key, pts });
     for (let u = u0 + 6; u < top; u += 6) {
-      if (Math.abs(x - centerX(u, wd)) > halfW(u) - 4) return { u, kind: "wall" };
+      const c = centerX(u, wd), hw = halfW(u);
+      const x = c + Math.max(-(hw - 10), Math.min(hw - 10, off));
+      pts.push([x, u]);
       const k = Math.round((u - GATE_START) / GATE_SPACE);
       if (k >= 0 && !S.gatesOff.has(k)) {
         const g = gateAt(k, wd);
-        if (u >= g.u && u <= g.u + GATE_TH && Math.abs(x - g.gc) > g.gw / 2 - 2) return { u: g.u + GATE_TH / 2, kind: "gate", key: k };
+        if (u >= g.u && u <= g.u + GATE_TH && Math.abs(x - g.gc) > g.gw / 2 - 2) return done(g.u + GATE_TH / 2, "gate", k);
       }
       if (breakE(u) > 0) {
         for (const q of pillarsNear(u - 40, u + 40, wd)) {
-          if (u >= q.u && u <= q.u + q.h && Math.abs(x - q.x) < q.w / 2 && !S.cleared.has(pillarKey(q))) return { u: q.u + q.h / 2, kind: "pillar", key: pillarKey(q) };
+          if (u >= q.u && u <= q.u + q.h && Math.abs(x - q.x) < q.w / 2 && !S.cleared.has(pillarKey(q))) return done(q.u + q.h / 2, "pillar", pillarKey(q));
         }
       }
     }
-    return { u: top, kind: "air" };
+    return done(top, "air");
+  }
+  /* The rocket as it flies: the card's picture is tilted for the card, so
+     this is the same drawing with the tilt taken out, nose straight up. */
+  let rocketUpUrl = null;
+  function rocketUpArt() {
+    if (rocketUpUrl) return rocketUpUrl;
+    const c = document.createElement("canvas"); c.width = c.height = 64;
+    const g = c.getContext("2d"); g.lineCap = "round";
+    g.translate(32, 32); g.rotate(Math.PI / 4); g.translate(-32, -32);
+    POWERS.find(p => p.id === "rocket").draw(g, 64);
+    return (rocketUpUrl = c.toDataURL("image/png"));
   }
   /* The rocket on its way: drawn along a straight line from where it was
      fired to the obstacle, nose first, flame behind, easing up to speed.
@@ -6098,8 +6120,14 @@
   function drawRocket(c, dist, now) {
     const r = S.rocket;
     if (r) {
-      const k = Math.min(1, (now - r.t0) / r.dur), kk = k * (0.35 + 0.65 * k);
-      const x = r.x0 + (r.x1 - r.x0) * kk, u = r.u0 + (r.u1 - r.u0) * kk;
+      // the frame's clock can sit a little behind the launch, so progress is held to 0..1
+      const k = Math.max(0, Math.min(1, (now - r.t0) / r.dur)), kk = k * (0.5 + 0.5 * k);
+      // where along the path, and which way it is pointing there
+      const n = Math.max(1, r.pts.length - 1), fi = kk * n, i = Math.max(0, Math.min(n - 1, Math.floor(fi))), t = fi - i;
+      const p0 = r.pts[i] || r.pts[0], p1 = r.pts[Math.min(n, i + 1)] || p0;
+      const x = p0[0] + (p1[0] - p0[0]) * t, u = p0[1] + (p1[1] - p0[1]) * t;
+      const ahead = r.pts[Math.min(n, i + 3)] || p1;
+      const a = Math.atan2(-(ahead[1] - p0[1]), ahead[0] - p0[0]);         // on screen, up is less u
       const y = H - (u - dist);
       for (let i = 0; i < 4; i++) {
         PARTS.push({ x: x + (Math.random() - 0.5) * 8, u: u - 18, vx: (Math.random() - 0.5) * 60, vu: -(160 + Math.random() * 120),
@@ -6107,15 +6135,13 @@
                      col: Math.random() < 0.5 ? "#ffd34d" : "#ff5e1f", grow: false, twinkle: false, fall: false });
       }
       // the flame itself, a short streak behind the nose
-      { const a = Math.atan2(-(r.u1 - r.u0), r.x1 - r.x0);
-        const g = c.createLinearGradient(x, y, x - Math.cos(a) * 46, y - Math.sin(a) * 46);
+      { const g = c.createLinearGradient(x, y, x - Math.cos(a) * 46, y - Math.sin(a) * 46);
         g.addColorStop(0, "rgba(255,230,120,.95)"); g.addColorStop(0.5, "rgba(255,94,31,.6)"); g.addColorStop(1, "rgba(255,94,31,0)");
         c.save(); c.strokeStyle = g; c.lineWidth = 9; c.lineCap = "round";
         c.beginPath(); c.moveTo(x - Math.cos(a) * 14, y - Math.sin(a) * 14); c.lineTo(x - Math.cos(a) * 46, y - Math.sin(a) * 46); c.stroke(); c.restore(); }
-      const pic = art(powerArt("rocket", 64)).still;
+      const pic = art(rocketUpArt()).still;
       if (pic && pic.naturalWidth) {
-        const a = Math.atan2(-(r.u1 - r.u0), r.x1 - r.x0);      // on screen, up is less u
-        c.save(); c.translate(x, y); c.rotate(a + Math.PI / 4);    // the picture's nose points up and right
+        c.save(); c.translate(x, y); c.rotate(a + Math.PI / 2);    // the picture's nose points straight up
         c.drawImage(pic, -28, -28, 56, 56);
         c.restore();
       }
