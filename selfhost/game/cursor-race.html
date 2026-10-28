@@ -1734,7 +1734,10 @@
   /* Single player has nobody to drop anything on you, so the channel does
      it: poop, knives and banana peels lie in the way, to be steered round,
      and now and then a rocket or an MP3 player to be picked up and used.
-     Seeded like the gems, so a seed is the same course every time. */
+     Seeded like the gems, so a seed is the same course every time. The
+     things that hurt come in over the top edge and scroll down in full view,
+     never popping up in front of you the way a gem does; only the rockets
+     and MP3 players, which are there to be grabbed, pop in like gems. */
   const SOLO_EVERY = 1500, SOLO_R = 18;
   const SOLO_KINDS = ["poop", "poop", "poop", "knife", "knife", "banana", "banana", "rocket", "rocket", "mp3"];
   const soloCache = new Map();
@@ -1749,8 +1752,10 @@
       const off = ((u - GATE_START) % GATE_SPACE + GATE_SPACE) % GATE_SPACE;
       if (u > GATE_START && off < GATE_TH + 60) u += GATE_TH + 90;
       const room = Math.max(0, halfW(u) - SOLO_R - 26);
-      list.push({ id: "s" + n + "-0", kind: SOLO_KINDS[Math.floor(rnd() * SOLO_KINDS.length)],
-                  u, x: centerX(u, wd) + (rnd() * 2 - 1) * room, appearY: 40 + rnd() * 300 });
+      const kind = SOLO_KINDS[Math.floor(rnd() * SOLO_KINDS.length)];
+      const x = centerX(u, wd) + (rnd() * 2 - 1) * room, popY = 40 + rnd() * 300;
+      const hurts = kind === "poop" || kind === "knife" || kind === "banana";
+      list.push({ id: "s" + n + "-0", kind, u, x, appearY: hurts ? -(SOLO_R + 70) : popY });
     }
     if (soloCache.size > 80) soloCache.clear();
     soloCache.set(key, list);
