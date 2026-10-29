@@ -1302,6 +1302,12 @@
     </div>
 
     <div class="card">
+      <h2><span>Speed sound</span><span id="soundTotal">0 gems</span></h2>
+      <div class="skins" id="sounds"></div>
+      <div class="hint" id="soundHint">what your cursor sounds like when you swing it - only you hear it</div>
+    </div>
+
+    <div class="card">
       <h2><span>Ground</span><span id="groundTotal">0 coins</span></h2>
       <div class="skins" id="grounds"></div>
       <div class="hint" id="groundHint">yours alone &mdash; everyone else flies over the plain one</div>
@@ -2565,6 +2571,21 @@
   ];
   const groundById = id => GROUNDS.find(t => t.id === id) || GROUNDS[0];
 
+  /* What your cursor sounds like when you throw it about: quiet while you
+     hold a line, louder and higher the faster you swing. Bought with gems,
+     like tails, and yours alone - like the ground, it is in no presence, so
+     a table of ten is not ten engines in everybody's ears. How each one is
+     made is in VOICES, by the sound code. */
+  const SOUNDS = [
+    { id: "quiet", name: "Quiet", cost: 0 },
+    { id: "swish", name: "Swish", cost: 250, wave: "air" },
+    { id: "skid", name: "Skid", cost: 800, wave: "zig" },
+    { id: "jet", name: "Jet", cost: 2000, wave: "saw" },
+    { id: "plasma", name: "Plasma", cost: 4500, wave: "hum" },
+    { id: "laser", name: "Laser", cost: 8000, wave: "square" }
+  ];
+  const soundById = id => SOUNDS.find(t => t.id === id) || SOUNDS[0];
+
   /* Things standing about out there: a tree, a cow, a parked car. Placed the
      same way the hoardings are - seeded from the world, worked out a stretch
      at a time, cached, and drawn only while they are on screen - so the cost
@@ -2798,7 +2819,10 @@
     return pat;
   }
   function groundPattern() { return patternFor(groundById(S.ground), ctx); }
-  const byKind = kind => kind === "skins" ? skinById : kind === "tails" ? tailById : groundById;
+  const byKind = kind => kind === "skins" ? skinById : kind === "tails" ? tailById : kind === "sounds" ? soundById : groundById;
+  const poolOf = kind => kind === "skins" ? SKINS : kind === "tails" ? TAILS : kind === "sounds" ? SOUNDS : GROUNDS;
+  /* tails and sounds are paid in gems, cursors and grounds in coins */
+  const inGems = kind => kind === "tails" || kind === "sounds";
   /* free items are everyone's; the rest are bought and remembered */
   /* free things are everybody's; a gift is a signed-in account's; the rest is bought */
   const owns = (item, kind) => !!item && ((item.cost === 0 && !item.gift) || (item.gift && S.canBuy) || S.owned[kind].has(item.id));
@@ -3125,13 +3149,14 @@
     skin: "arrow",
     ground: "plain",     // yours alone: it is in no presence and reaches nobody
     tail: "wisp",
+    sound: "quiet",      // yours alone too: what steering sounds like
     coins: START_COINS,
     gems: 0,
     runCoins: 0,
     runGems: 0,
     gemsTaken: new Map(),
     gemPending: new Set(),
-    owned: { skins: new Set(), tails: new Set(), grounds: new Set() },
+    owned: { skins: new Set(), tails: new Set(), grounds: new Set(), sounds: new Set() },
     buying: null,
     canBuy: false,
     gatesPassed: 0,
@@ -3933,7 +3958,6 @@
     $("coinWord").textContent = S.runCoins === 1 ? "coin" : "coins";
     pingUntil = performance.now() + 160;
     $("coinLine").classList.add("ping");
-    blip("coin");
   }
 
   /* A gem goes to whoever touches it first. The claim is broadcast and the room
@@ -4016,10 +4040,10 @@
   /* ---------- profile ---------- */
   function saveProfile() {
     const body = {
-      coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail, ground: S.ground,
+      coins: S.coins, gems: S.gems, skin: S.skin, tail: S.tail, ground: S.ground, sound: S.sound,
       name: S.name, color: S.color, best: S.best, bestSolo: S.bestSolo,
       owned: { skins: [...S.owned.skins], tails: [...S.owned.tails],
-               grounds: [...S.owned.grounds] }
+               grounds: [...S.owned.grounds], sounds: [...S.owned.sounds] }
     };
     try { localStorage.setItem("cr.profile", JSON.stringify(body)); } catch (e) {}
     if (S.profileRef) S.profileRef.set(body).catch(() => {});
@@ -4059,6 +4083,9 @@
       for (const id of Array.isArray(p.owned.grounds) ? p.owned.grounds : []) {
         if (GROUNDS.some(t => t.id === id)) S.owned.grounds.add(id);
       }
+      for (const id of Array.isArray(p.owned.sounds) ? p.owned.sounds : []) {
+        if (SOUNDS.some(t => t.id === id)) S.owned.sounds.add(id);
+      }
     }
     /* Dot was the free one until Arrow took its place. Anyone already wearing
        it keeps it, rather than finding it locked behind ninety coins. */
@@ -4069,6 +4096,8 @@
     if (owns(tl, "tails")) S.tail = tl.id;
     const gr = groundById(p.ground);
     if (owns(gr, "grounds")) S.ground = gr.id;
+    const sd = soundById(p.sound);
+    if (owns(sd, "sounds")) S.sound = sd.id;
   }
   function refreshIdentity() {
     nameInput.value = S.name;
@@ -4895,6 +4924,7 @@
     watchFrames(now);
     kickIdle(now);
     step(now);
+    steerSound(now);
     draw(now);
     animateAppCursor(now);
     if (document.body.classList.contains("focus")) clearFx();
@@ -5556,15 +5586,15 @@
 
   }
 
-  /* The little sounds of a run: a coin at each gate, a gem, a power picked
-     up, a power let go. Made on the spot from oscillators rather than shipped
-     as recordings, so there is nothing to fetch and nothing to decode - a
-     handful of nodes started and left to stop themselves, which costs less
-     than drawing one frame. Gates come about one and a half a second at full
-     speed, so the coin is the shortest and quietest of them; nobody wants to
-     be pinged at. Only your own pickups make a sound, and they sit under the
-     same slider as everything else. Where there is no context yet - nobody
-     has touched the page - they are simply skipped. */
+  /* The little sounds of a run: a gem, a power picked up, a power let go -
+     each power its own, so a slice sounds like a slice. Made on the spot
+     from oscillators and noise rather than shipped as recordings, so there is
+     nothing to fetch and nothing to decode - a handful of nodes started and
+     left to stop themselves, which costs less than drawing one frame. Gates
+     make no sound: they come one and a half a second at full speed, and a
+     ping at every one wore thin fast. Only your own pickups make a sound,
+     and they sit under the same slider as everything else. Where there is no
+     context yet - nobody has touched the page - they are simply skipped. */
   let noiseBuf = null;
   function blip(which, kind) {
     const ctx = audioCtx();
@@ -5586,7 +5616,9 @@
       last.connect(out);
       o.start(t + at); o.stop(t + at + dur + 0.02);
     };
-    const hiss = (at, dur, vol, f0, f1) => {
+    /* noise through a sweeping filter: a whoosh, a hiss of steel, a splat.
+       peak is how far into the sound it is loudest, as a share of it */
+    const hiss = (at, dur, vol, f0, f1, kind, q, peak) => {
       if (!noiseBuf) {
         noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.5), ctx.sampleRate);
         const d = noiseBuf.getChannelData(0);
@@ -5594,20 +5626,16 @@
       }
       const n = ctx.createBufferSource(), bp = ctx.createBiquadFilter(), g = ctx.createGain();
       n.buffer = noiseBuf;
-      bp.type = "bandpass"; bp.Q.value = 1.4;
+      bp.type = kind || "bandpass"; bp.Q.value = q || 1.4;
       bp.frequency.setValueAtTime(f0, t + at);
       bp.frequency.exponentialRampToValueAtTime(f1, t + at + dur);
       g.gain.setValueAtTime(0.0001, t + at);
-      g.gain.exponentialRampToValueAtTime(vol, t + at + dur * 0.25);
+      g.gain.exponentialRampToValueAtTime(vol, t + at + dur * (peak || 0.25));
       g.gain.exponentialRampToValueAtTime(0.0001, t + at + dur);
       n.connect(bp).connect(g).connect(out);
       n.start(t + at); n.stop(t + at + dur + 0.02);
     };
-    if (which === "coin") {                       // two quick bright notes, a fifth apart
-      const lift = 1 + (S.gatesPassed % 3) * 0.06;   // a touch of variety, so a run is not one note
-      tone(1046 * lift, 0, 0.06, "square", 0.09, 0, 3200);
-      tone(1568 * lift, 0.05, 0.16, "square", 0.08, 0, 3200);
-    } else if (which === "gem") {                 // a sparkle running up
+    if (which === "gem") {                        // a sparkle running up
       [1319, 1661, 1976, 2637].forEach((f, i) => tone(f, i * 0.045, 0.32, "sine", 0.16));
       tone(5274, 0.14, 0.25, "triangle", 0.03);
     } else if (which === "power") {               // a sweep up into a chord
@@ -5615,17 +5643,201 @@
       tone(390, 0.03, 0.24, "square", 0.05, 1560, 2400);
       [1047, 1319, 1568].forEach(f => tone(f, 0.24, 0.42, "sine", 0.1));
     } else if (which === "fire") {
-      if (kind === "rocket") {                    // a whoosh off the launcher, and the kick behind it
-        hiss(0, 0.42, 0.5, 500, 3800);
-        tone(140, 0, 0.22, "sine", 0.35, 45);
-      } else if (kind === "poop" || kind === "knife" || kind === "banana") {   // let go of, behind you
-        tone(720, 0, 0.18, "sine", 0.3, 170);
-        tone(1100, 0.02, 0.08, "triangle", 0.06, 500);
-      } else {                                    // a zap out of the speakers
-        tone(1700, 0, 0.16, "square", 0.08, 180, 2600);
-        tone(880, 0.05, 0.2, "sawtooth", 0.05, 110, 1800);
+      if (kind === "rocket") {                    // ignition crackle, the roar off the launcher, the kick behind it
+        hiss(0, 0.07, 0.35, 2500, 1200, "highpass", 0.7, 0.1);
+        hiss(0.02, 0.6, 0.55, 300, 4200, "bandpass", 1.1, 0.3);
+        tone(120, 0, 0.3, "sine", 0.4, 38);
+        tone(220, 0.03, 0.5, "sawtooth", 0.05, 900, 1400);
+      } else if (kind === "knife") {              // steel drawn across steel, and the ring it leaves
+        hiss(0, 0.2, 0.45, 2200, 9000, "highpass", 2.5, 0.75);
+        tone(3520, 0.17, 0.5, "sine", 0.07);
+        tone(5274, 0.17, 0.35, "sine", 0.035);
+        tone(2637, 0.18, 0.25, "triangle", 0.03);
+      } else if (kind === "poop") {               // a wet plop, then the splat spreading
+        tone(340, 0, 0.13, "sine", 0.45, 70);
+        hiss(0.05, 0.22, 0.4, 1500, 260, "lowpass", 3, 0.15);
+        tone(190, 0.15, 0.1, "sine", 0.2, 55);
+      } else if (kind === "banana") {             // a skin dropped, and the slide whistle of whoever finds it
+        tone(260, 0, 0.08, "triangle", 0.26, 140);
+        tone(420, 0.09, 0.32, "sine", 0.24, 1250);
+        tone(1250, 0.4, 0.26, "sine", 0.2, 330);
+      } else if (kind === "mp3") {                // a button pressed, and a tape winding down to nothing
+        tone(2000, 0, 0.025, "square", 0.2, 0, 4000);
+        tone(660, 0.04, 0.45, "sawtooth", 0.15, 70, 1500);
+        tone(990, 0.04, 0.45, "triangle", 0.11, 105);
+      } else {                                    // the subwoofer: a bass drop you feel more than hear
+        tone(95, 0, 0.6, "sine", 0.6, 28);
+        tone(190, 0, 0.3, "square", 0.08, 55, 400);
+        hiss(0, 0.12, 0.25, 900, 120, "lowpass", 1, 0.05);
       }
     }
+  }
+
+  /* ---------- speed sound ----------
+     The voice bought in the shop, playing for the whole of a run and silent
+     while you hold a line: it wakes as the cursor swings, louder and higher
+     the faster it goes, and Skid screams when you throw it back the other
+     way. A voice is a few nodes built at the gate and steered every frame
+     with setTargetAtTime, which the audio thread smooths for us - the frame
+     only says where each knob should head. Yours alone; nobody else hears it. */
+  let loopBuf = null;
+  function loopNoise(ctx) {
+    // two seconds, long enough that the loop is not heard as a flutter
+    if (!loopBuf) {
+      loopBuf = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
+      const d = loopBuf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    }
+    const n = ctx.createBufferSource();
+    n.buffer = loopBuf; n.loop = true;
+    return n;
+  }
+  const VOICES = {
+    swish(ctx, out) {                             // air parting round it
+      const n = loopNoise(ctx), bp = ctx.createBiquadFilter(), g = ctx.createGain();
+      bp.type = "bandpass"; bp.Q.value = 0.8; g.gain.value = 0;
+      n.connect(bp).connect(g).connect(out);
+      return { srcs: [n], set(i, turn, at) {
+        bp.frequency.setTargetAtTime(350 + 2800 * i, at, 0.05);
+        g.gain.setTargetAtTime(0.6 * Math.pow(i, 1.4), at, 0.04);
+      } };
+    },
+    skid(ctx, out) {                              // rubber: a low roll at speed, a scream on the turn
+      const n = loopNoise(ctx);
+      const roll = ctx.createBiquadFilter(), rg = ctx.createGain();
+      roll.type = "bandpass"; roll.Q.value = 2.5; roll.frequency.value = 700; rg.gain.value = 0;
+      const cry = ctx.createBiquadFilter(), cg = ctx.createGain();
+      cry.type = "bandpass"; cry.Q.value = 11; cry.frequency.value = 2000; cg.gain.value = 0;
+      n.connect(roll).connect(rg).connect(out);
+      n.connect(cry).connect(cg).connect(out);
+      return { srcs: [n], set(i, turn, at) {
+        rg.gain.setTargetAtTime(0.25 * i, at, 0.05);
+        cry.frequency.setTargetAtTime(1800 + 900 * i + 400 * turn, at, 0.03);
+        cg.gain.setTargetAtTime(1.4 * turn * (0.4 + 0.6 * i), at, 0.02);
+      } };
+    },
+    jet(ctx, out) {                               // a turbine spooling up
+      const o = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = "sawtooth"; o.frequency.value = 90;
+      lp.type = "lowpass"; lp.Q.value = 4; lp.frequency.value = 500; g.gain.value = 0;
+      const n = loopNoise(ctx), hp = ctx.createBiquadFilter(), ng = ctx.createGain();
+      hp.type = "highpass"; hp.frequency.value = 3000; ng.gain.value = 0;
+      o.connect(lp).connect(g).connect(out);
+      n.connect(hp).connect(ng).connect(out);
+      return { srcs: [o, n], set(i, turn, at) {
+        o.frequency.setTargetAtTime(90 + 460 * i, at, 0.08);
+        lp.frequency.setTargetAtTime(500 + 3500 * i, at, 0.08);
+        g.gain.setTargetAtTime(0.2 * Math.pow(i, 1.2), at, 0.06);
+        ng.gain.setTargetAtTime(0.14 * i, at, 0.06);
+      } };
+    },
+    plasma(ctx, out) {                            // a blade's hum, rising as it is swung
+      const a = ctx.createOscillator(), b = ctx.createOscillator(), lp = ctx.createBiquadFilter(), g = ctx.createGain();
+      a.type = "sawtooth"; b.type = "sawtooth"; a.frequency.value = 82; b.frequency.value = 84.5;
+      lp.type = "lowpass"; lp.frequency.value = 700; g.gain.value = 0;
+      a.connect(lp); b.connect(lp); lp.connect(g).connect(out);
+      return { srcs: [a, b], set(i, turn, at) {
+        const k = 1 + 0.4 * i + 0.15 * turn;
+        a.frequency.setTargetAtTime(82 * k, at, 0.05);
+        b.frequency.setTargetAtTime(84.5 * k, at, 0.05);
+        lp.frequency.setTargetAtTime(700 + 1800 * i, at, 0.05);
+        g.gain.setTargetAtTime(0.035 + 0.3 * i, at, 0.04);   // a low hum even holding still
+      } };
+    },
+    laser(ctx, out) {                             // a warbling beam that climbs with the swing
+      const o = ctx.createOscillator(), lfo = ctx.createOscillator(), depth = ctx.createGain();
+      const lp = ctx.createBiquadFilter(), g = ctx.createGain();
+      o.type = "square"; o.frequency.value = 220;
+      lfo.type = "sine"; lfo.frequency.value = 7; depth.gain.value = 0;
+      lp.type = "lowpass"; lp.frequency.value = 2600; g.gain.value = 0;
+      lfo.connect(depth).connect(o.frequency);
+      o.connect(lp).connect(g).connect(out);
+      return { srcs: [o, lfo], set(i, turn, at) {
+        o.frequency.setTargetAtTime(220 + 1300 * i + 500 * turn, at, 0.04);
+        depth.gain.setTargetAtTime(10 + 60 * i, at, 0.05);
+        g.gain.setTargetAtTime(0.13 * Math.pow(i, 1.3), at, 0.04);
+      } };
+    }
+  };
+  function makeVoice(id) {
+    const ctx = actx;
+    if (!ctx || !VOICES[id]) return null;
+    const out = ctx.createGain();
+    out.gain.value = Math.min(1, musicVol * CUE_LEVEL);
+    out.connect(ctx.destination);
+    const v = VOICES[id](ctx, out);
+    v.id = id; v.out = out;
+    const at = ctx.currentTime;
+    for (const s of v.srcs) s.start(at);
+    return v;
+  }
+  function dropVoice(v) {
+    if (!v) return;
+    const at = actx.currentTime;
+    v.out.gain.setTargetAtTime(0, at, 0.04);          // a fade, not a click
+    for (const s of v.srcs) { try { s.stop(at + 0.25); } catch (e) {} }
+    setTimeout(() => { try { v.out.disconnect(); } catch (e) {} }, 400);
+  }
+
+  const SW = { voice: null, x: 0, y: 0, t: 0, vx: 0, vy: 0, v: 0, pk: 0, turn: 0, hx: 0, hy: 0, at: 0 };
+  function steerSound(now) {
+    const want = S.phase === "racing" && S.joined && !S.death && S.sound !== "quiet" &&
+      !document.hidden && actx && actx.state === "running" && musicVol > 0;
+    if (!want || (SW.voice && SW.voice.id !== S.sound)) {
+      if (SW.voice) { dropVoice(SW.voice); SW.voice = null; }
+      if (!want) { SW.t = 0; return; }
+    }
+    if (!SW.voice) { SW.voice = makeVoice(S.sound); SW.t = 0; if (!SW.voice) return; }
+    const dt = SW.t ? (now - SW.t) / 1000 : 0;
+    if (!(dt > 0 && dt < 0.1)) {                      // first frame, or after a pause: start from rest
+      SW.x = S.cx; SW.y = S.cy; SW.t = now; SW.vx = SW.vy = SW.v = SW.pk = SW.turn = 0; SW.at = 0;
+      return;
+    }
+    const vx = (S.cx - SW.x) / dt, vy = (S.cy - SW.y) / dt;
+    SW.x = S.cx; SW.y = S.cy; SW.t = now;
+    const k = Math.min(1, dt / 0.06);                 // input arrives unevenly; smooth it over a few frames
+    SW.vx += (vx - SW.vx) * k; SW.vy += (vy - SW.vy) * k;
+    SW.v = Math.hypot(SW.vx, SW.vy);
+    /* A turn is the heading swinging round while going quickly. Thrown back
+       the other way, a cursor slows through nothing at the reversal, so the
+       heading it had while fast is held on to for a moment and the new one is
+       measured against that, not against the crawl in between. It rings on a
+       little after. */
+    let turn = 0;
+    SW.pk = Math.max(SW.v, SW.pk * Math.exp(-dt / 0.3));   // how hard it was thrown, lately
+    if (SW.v > 300) {
+      const hx = SW.vx / SW.v, hy = SW.vy / SW.v;
+      if (now - SW.at < 400) turn = Math.min(1, (1 - (hx * SW.hx + hy * SW.hy)) * 1.5) * Math.min(1, SW.pk / 1000);
+      SW.hx = hx; SW.hy = hy; SW.at = now;
+    }
+    SW.turn = Math.max(turn, SW.turn * Math.exp(-dt / 0.14));
+    const i = Math.max(0, Math.min(1, (SW.v - 220) / 1500));
+    SW.voice.out.gain.setTargetAtTime(Math.min(1, musicVol * CUE_LEVEL), actx.currentTime, 0.1);
+    SW.voice.set(i, SW.turn, actx.currentTime);
+  }
+
+  /* Tapping a sound in the shop plays it on a swing it makes up: across,
+     back hard, across again, then still. */
+  let swing = null;
+  const demoAt = t => t < 0.35 ? t / 0.35 : t < 0.5 ? 1 - (t - 0.35) / 0.15 * 0.8
+    : t < 0.8 ? 0.2 + (t - 0.5) / 0.3 * 0.75 : t < 1.3 ? 0.95 * (1 - (t - 0.8) / 0.5) : 0;
+  function demoLoud(id, now) {
+    return swing && swing.id === id ? demoAt((now - swing.t0) / 1000) : 0;
+  }
+  async function swingDemo(id) {
+    if (swing) { clearInterval(swing.timer); dropVoice(swing.voice); swing = null; }
+    const ctx = audioCtx();
+    if (!ctx || !VOICES[id]) return;
+    if (ctx.state !== "running") { try { await ctx.resume(); } catch (e) { return; } }
+    const voice = makeVoice(id);
+    if (!voice) return;
+    const d = swing = { id, voice, t0: performance.now(), timer: 0 };
+    d.timer = setInterval(() => {
+      const t = (performance.now() - d.t0) / 1000;
+      if (t > 1.45) { clearInterval(d.timer); dropVoice(voice); if (swing === d) swing = null; return; }
+      const turn = (t > 0.38 && t < 0.62) ? 1 - Math.abs(t - 0.5) / 0.12 : 0;   // the throw back
+      voice.set(demoAt(t), Math.max(0, turn), ctx.currentTime);
+    }, 30);
   }
 
   function syncMusic() {
@@ -7143,7 +7355,7 @@
       const have = owns(s, kind);
       const armed = S.buying && S.buying.kind === kind && S.buying.id === s.id;
       // gold lock = you can afford this one today
-      const afford = !have && s.cost <= (kind === "tails" ? S.gems : S.coins);
+      const afford = !have && s.cost <= (inGems(kind) ? S.gems : S.coins);
       return '<button class="skin' + (have ? "" : " locked") + (afford ? " afford" : "") +
         (armed ? " armed" : "") + '" data-id="' + s.id + '"' +
         (have ? ' aria-pressed="' + (s.id === chosen) + '" aria-label="' + esc(s.name) + '"'
@@ -7158,7 +7370,7 @@
   /* the hint line under each grid doubles as the till */
   function tillHTML(kind, purse, unit) {
     if (!S.buying || S.buying.kind !== kind) {
-      const pool = kind === "skins" ? SKINS : kind === "tails" ? TAILS : GROUNDS;
+      const pool = poolOf(kind);
       const mine = pool.filter(s => owns(s, kind)).length;
       const all = pool.length;
       return mine >= all ? "you own them all" : "tap a locked one to buy it";
@@ -7173,20 +7385,23 @@
 
   function paintSkins() {
     const sig = S.coins + "/" + S.gems + "|" + S.skin + "|" + S.tail + "|" + S.color +
-      "|" + S.ground + "|" + S.owned.skins.size + "." + S.owned.tails.size +
-      "." + S.owned.grounds.size +
+      "|" + S.ground + "|" + S.sound + "|" + S.owned.skins.size + "." + S.owned.tails.size +
+      "." + S.owned.grounds.size + "." + S.owned.sounds.size +
       "|" + (S.buying ? S.buying.kind + S.buying.id : "-");
     if ($("skins").dataset.sig !== sig || $("tails").dataset.sig !== sig ||
-        $("grounds").dataset.sig !== sig) {
+        $("grounds").dataset.sig !== sig || $("sounds").dataset.sig !== sig) {
       previews.length = 0;                       // cleared, so every grid rebuilds
       if (watchPreviews) watchPreviews.disconnect();
-      $("skins").dataset.sig = ""; $("tails").dataset.sig = ""; $("grounds").dataset.sig = "";
+      $("skins").dataset.sig = ""; $("tails").dataset.sig = ""; $("grounds").dataset.sig = ""; $("sounds").dataset.sig = "";
     }
     grid($("skins"), SKINS, S.skin, sig, "skins");
     grid($("tails"), TAILS, S.tail, sig, "tails");
+    grid($("sounds"), SOUNDS, S.sound, sig, "sounds");
     grid($("grounds"), GROUNDS, S.ground, sig, "grounds");
     $("coinTotal").textContent = S.coins + (S.coins === 1 ? " coin" : " coins");
     $("gemTotal").textContent = S.gems + (S.gems === 1 ? " gem" : " gems");
+    $("soundTotal").textContent = $("gemTotal").textContent;
+    $("soundHint").innerHTML = tillHTML("sounds", S.gems, "gems");
     $("groundTotal").textContent = S.coins + (S.coins === 1 ? " coin" : " coins");
     $("groundHint").innerHTML = tillHTML("grounds", S.coins, "coins");
     $("skinHint").innerHTML = tillHTML("skins", S.coins, "coins");
@@ -7198,13 +7413,14 @@
     if (!S.canBuy) { say("sign in with google to buy"); return; }
     const item = byKind(kind)(S.buying.id);
     if (owns(item, kind)) return;
-    const purse = kind === "tails" ? S.gems : S.coins;
-    if (purse < item.cost) { say("not enough " + (kind === "tails" ? "gems" : "coins")); return; }
+    const purse = inGems(kind) ? S.gems : S.coins;
+    if (purse < item.cost) { say("not enough " + (inGems(kind) ? "gems" : "coins")); return; }
     if (kind === "skins") S.skin = item.id;
     else if (kind === "tails") S.tail = item.id;
+    else if (kind === "sounds") S.sound = item.id;
     else S.ground = item.id;
     if (!S.serverLedger) {
-      if (kind === "tails") S.gems -= item.cost; else S.coins -= item.cost;
+      if (inGems(kind)) S.gems -= item.cost; else S.coins -= item.cost;
     }
     S.owned[kind].add(item.id);
     S.buying = null;
@@ -7217,6 +7433,31 @@
     const f = i / 9;
     SAMPLE.push([-24 + f * 24, 15 - f * 15 + Math.sin(f * 3.4) * 5]);
   }
+  /* The tile for a speed sound, in a 34 unit box centred on the origin: a
+     speaker on the left and the sound's own wave running off it, which swells
+     while its demo is playing. */
+  function drawWave(c, item, col, now) {
+    const loud = demoLoud(item.id, now);
+    c.fillStyle = col; c.strokeStyle = col; c.lineJoin = "round"; c.lineCap = "round";
+    c.beginPath();
+    c.moveTo(-14, -3); c.lineTo(-10, -3); c.lineTo(-5, -8); c.lineTo(-5, 8); c.lineTo(-10, 3); c.lineTo(-14, 3);
+    c.closePath(); c.fill();
+    const amp = 2.2 + 4.5 * loud, ph = now / (item.wave === "hum" ? 260 : 120);
+    c.lineWidth = 1.6;
+    c.beginPath();
+    for (let i = 0; i <= 40; i++) {
+      const x = -1 + i * 0.4, f = i / 40, env = Math.sin(f * Math.PI);
+      const k = f * 6 + ph;
+      const y = item.wave === "air" ? Math.sin(k * 1.3) * 0.6 + Math.sin(k * 3.7 + 1) * 0.4
+        : item.wave === "zig" ? ((Math.floor(k * 4) % 2) ? 1 : -1) * (0.4 + 0.6 * Math.abs(Math.sin(k * 7)))
+        : item.wave === "saw" ? ((k * 1.5) % 1) * 2 - 1
+        : item.wave === "square" ? (Math.sin(k * 2.2) > 0 ? 1 : -1)
+        : Math.sin(k * 0.9) * 0.8 + Math.sin(k * 0.93) * 0.2;
+      if (i) c.lineTo(x, y * amp * env); else c.moveTo(x, 0);
+    }
+    c.stroke();
+  }
+
   function drawPreviews(now) {
     for (const p of previews) {
       if (watchPreviews && !onScreen.has(p.c)) continue;
@@ -7238,7 +7479,9 @@
         c.beginPath(); c.moveTo(38, 0); c.bezierCurveTo(10, 45, 126, 91, 98, 136); c.stroke();
         continue;
       }
-      if (p.item.draw) {
+      if (p.item.wave) {                      // a speed sound: a speaker, and the shape of what it plays
+        drawWave(c, p.item, S.color, now);
+      } else if (p.item.draw) {
         c.scale(.78, .78);
         p.item.draw(c, 0, p.item.id === "arrow" ? -8 : 0, S.color, now);
       } else if (p.item.color) {
@@ -7268,6 +7511,7 @@
       const b = e.target.closest(".skin");
       if (!b) return;
       const item = byKind(kind)(b.dataset.id);
+      if (kind === "sounds") swingDemo(item.id);   // a sound is chosen by ear: every tap plays it
       if (!owns(item, kind)) {                 // wear it here; the till does the rest
         S.buying = { kind, id: item.id };
         paintSkins();
@@ -7277,6 +7521,7 @@
       S.buying = null;
       if (kind === "skins") S.skin = item.id;
       else if (kind === "tails") S.tail = item.id;
+      else if (kind === "sounds") S.sound = item.id;
       else S.ground = item.id;                 // this used to fall into the tail
       saveProfile(); paintSkins(); paintRail();
       if (kind === "skins") updateAppCursor();
@@ -7286,8 +7531,10 @@
   pickFrom("skins", $("skins"));
   pickFrom("tails", $("tails"));
   pickFrom("grounds", $("grounds"));
+  pickFrom("sounds", $("sounds"));
   $("skinHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("skins"); });
   $("tailHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("tails"); });
+  $("soundHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("sounds"); });
   $("groundHint").addEventListener("click", e => { if (e.target.closest("[data-buy]")) buy("grounds"); });
   $("outLine").addEventListener("click", leaveStands);
 
@@ -7420,9 +7667,11 @@
       if (saved.owned) {
         for (const id of saved.owned.skins || []) S.owned.skins.add(id);
         for (const id of saved.owned.tails || []) S.owned.tails.add(id);
+        for (const id of saved.owned.sounds || []) S.owned.sounds.add(id);
       }
       if (typeof saved.skin === "string" && owns(skinById(saved.skin), "skins")) S.skin = saved.skin;
       if (typeof saved.tail === "string" && owns(tailById(saved.tail), "tails")) S.tail = saved.tail;
+      if (typeof saved.sound === "string" && owns(soundById(saved.sound), "sounds")) S.sound = saved.sound;
     }
     nameInput.value = S.name;
     paintSwatches();
@@ -7452,7 +7701,8 @@
   try {
     window.claude?.hot?.snapshot?.(() => ({
       name: S.name, color: S.color, wins: S.wins, coins: S.coins, gems: S.gems,
-      skin: S.skin, tail: S.tail
+      skin: S.skin, tail: S.tail, sound: S.sound,
+      owned: { skins: [...S.owned.skins], tails: [...S.owned.tails], sounds: [...S.owned.sounds] }
     }));
   } catch (e) {}
   if (window.claude?.hot?.ready) window.claude.hot.ready(boot);

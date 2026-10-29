@@ -36,9 +36,11 @@ const TAIL_COST = { none: 0, wisp: 0, suits: 0, flare: 150, bubble: 300, snowfla
 const GROUND_COST = {
   plain: 0, meadow: 2000, atlas: 6000, neon: 14000, streets: 25000
 };
+// what steering sounds like; paid in gems, like tails
+const SOUND_COST = { quiet: 0, swish: 250, skid: 800, jet: 2000, plasma: 4500, laser: 8000 };
 
 module.exports = {
-  W, H, distAt, maxDistAt, SKIN_COST, TAIL_COST, GROUND_COST,
+  W, H, distAt, maxDistAt, SKIN_COST, TAIL_COST, GROUND_COST, SOUND_COST,
   JOIN_WINDOW: Number(process.env.JOIN_WINDOW || 30000),
   ENTRY_FEE: Number(process.env.ENTRY_FEE || 10),
   START_COINS: Number(process.env.START_COINS || 100),

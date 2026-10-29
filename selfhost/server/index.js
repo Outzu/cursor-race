@@ -180,14 +180,16 @@ function chargeForNewGear(uid, wanted, held) {
   const addedSkins = list(wanted, "skins").filter(id => !list(held, "skins").includes(id));
   const addedTails = list(wanted, "tails").filter(id => !list(held, "tails").includes(id));
   const addedGrounds = list(wanted, "grounds").filter(id => !list(held, "grounds").includes(id));
+  const addedSounds = list(wanted, "sounds").filter(id => !list(held, "sounds").includes(id));
   for (const id of addedSkins) coins += G.SKIN_COST[id] || 0;
   for (const id of addedGrounds) coins += G.GROUND_COST[id] || 0;   // grounds are coins too
   for (const id of addedTails) gems += G.TAIL_COST[id] || 0;
+  for (const id of addedSounds) gems += G.SOUND_COST[id] || 0;     // sounds are gems, like tails
   if (!coins && !gems) return true;
   const p = purse(uid);
   if (p.coins < coins || p.gems < gems) return false;
   if (coins) move(uid, -coins, "bought " + addedSkins.concat(addedGrounds).join(","), "coins");
-  if (gems) move(uid, -gems, "bought " + addedTails.join(","), "gems");
+  if (gems) move(uid, -gems, "bought " + addedTails.concat(addedSounds).join(","), "gems");
   return true;
 }
 

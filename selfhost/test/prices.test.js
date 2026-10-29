@@ -24,7 +24,7 @@ function listed() {
 test("the server charges what the page shows", () => {
   const onPage = listed();
   assert.ok(onPage.length > 20, "found the catalogue on the page");
-  const tables = { skins: G.SKIN_COST, tails: G.TAIL_COST, grounds: G.GROUND_COST };
+  const tables = { skins: G.SKIN_COST, tails: G.TAIL_COST, grounds: G.GROUND_COST, sounds: G.SOUND_COST };
   for (const { id, cost } of onPage) {
     const where = Object.entries(tables).filter(([, t]) => id in t);
     assert.equal(where.length, 1, id + " is priced in exactly one server table");
