@@ -5546,16 +5546,18 @@
      between them would start out a comfortable half minute apart and collapse
      to five seconds by the time anyone is going quickly - which is precisely
      when being jeered at stops being funny. Seconds hold the rate steady:
-     quiet for the first quarter minute, then one every twenty five to forty
-     five seconds. A minute's run hears two. */
-  const TAUNTS = 16;
+     quiet for the first ten seconds or so, then one every eighteen to
+     thirty four - a third more often than the twenty five to forty five it
+     started at, once there were twenty six of them to go round. A minute's
+     run hears two or three. */
+  const TAUNTS = 26;
   /* The sound at green: one of everything we have, the start horn or any of
      the jeers, drawn from the race so every pilot at the table hears the same
      one - and a different one at the next race. The countdown before it is
      always the countdown. */
   const startCueFor = rid => { const n = hashStr(String(rid || "") + ":start") % (TAUNTS + 1); return n === 0 ? "go" : "taunt" + (n - 1); };
-  const TAUNT_CLEAR = 12;                   // a quiet run-in first, in seconds
-  const TAUNT_MIN = 25, TAUNT_MAX = 45;
+  const TAUNT_CLEAR = 10;                   // a quiet run-in first, in seconds
+  const TAUNT_MIN = 18, TAUNT_MAX = 34;
   function tauntsFor(wd) {
     const rnd = mulberry32(hashStr(wd.seed + ":jeer"));
     const list = [];
@@ -5606,6 +5608,16 @@
     taunt13: "media/dc3bd215d3e4bd18.mp3",
     taunt14: "media/449f67a136339fe5.mp3",
     taunt15: "media/da89d73dfdd92f2e.mp3",
+    taunt16: "media/c772a49ff1f1d77e.mp3",
+    taunt17: "media/0684500072c0f60f.mp3",
+    taunt18: "media/725f9ab336da7e75.mp3",
+    taunt19: "media/3fde25183ec75667.mp3",
+    taunt20: "media/6c3d115fd9a15fcb.mp3",
+    taunt21: "media/f1ff1a9507951a11.mp3",
+    taunt22: "media/7fc7cc0af44a6d8f.mp3",
+    taunt23: "media/92656fd220b9830a.mp3",
+    taunt24: "media/a07c668a85de994d.mp3",
+    taunt25: "media/dbde684a6f0e982c.mp3",
   };
   const sfxEl = Object.create(null);
 

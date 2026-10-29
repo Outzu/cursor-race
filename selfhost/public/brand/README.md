@@ -27,9 +27,12 @@ Exports the game embeds, kept here with their sources so they can be re-cut.
   with Ghostscript (`-dEPSCrop -r81.92`) and encoded at webp quality 75
 - `sfx/prepare.mp3` - the countdown cue, mono 64k; multiplayer only, since a
   single-player run has no gate to count down
-- `sfx/taunt0..15.mp3` - the jeering mid-race, mono 64k. Where they land comes
+- `sfx/taunt0..25.mp3` - the jeering mid-race, mono 64k. Where they land comes
   from the world seed, so everyone in a race hears the same one at the same
-  point rather than each pilot being distracted at a different moment
+  point rather than each pilot being distracted at a different moment. A new
+  one is cut like 16..25 were: leading silence trimmed, at most 5.5 s with a
+  0.35 s fade if cut, leveled to -14.5 LUFS with peaks under -1.5 dB, then
+  `ffmpeg -ac 1 -b:a 64k`. Embedded as `taunt<N>` in `SFX`, with `TAUNTS` raised
 
 The logo and the cue are embedded in `cursor-race.html` as data URIs rather
 than fetched, so the game sounds and looks the same run as an artifact, where
