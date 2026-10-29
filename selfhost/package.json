@@ -11,7 +11,7 @@
     "build": "node build.js",
     "start": "node build.js && node server/index.js",
     "serve": "node server/index.js",
-    "test": "node test/shared.test.js"
+    "test": "node test/shared.test.js && node test/chat.test.js"
   },
   "dependencies": {
     "pg": "^8.13.1"

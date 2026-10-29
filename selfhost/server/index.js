@@ -13,6 +13,7 @@ const { attach } = require("./ws");
 const { Store, SplitStore } = require("./store");
 const G = require("./game");
 const google = require("./google");
+const { Chat, Throttle, clean: cleanChat } = require("./chat");
 
 const ROOT = path.join(__dirname, "..");
 const PUBLIC = path.join(ROOT, "public");
@@ -89,6 +90,59 @@ if (process.env.DATABASE_URL) {
 }
 
 const store = new SplitStore(local, shared);
+
+/* ---------- the chat ----------
+   One conversation across the regions, through the shared database where
+   there is one (chat.js). Anyone may read it; talking takes a signed-in
+   account, which is the cheapest guard there is against a bot. The owners
+   named in CHAT_ADMINS (Google emails) can take a line down, which also
+   keeps its author quiet for a day. */
+const chat = new Chat({ pool: shared ? shared.pool : null, log: (...a) => console.error(...a) });
+const chatThrottle = new Throttle(3, 2000);
+const chatLast = new Map();                     // uid -> { text, at }: the same line twice is not said twice
+const CHAT_ADMINS = new Set(String(process.env.CHAT_ADMINS || "")
+  .split(",").map(x => x.trim().toLowerCase()).filter(Boolean));
+const CHAT_BAN_MS = 24 * 3600000;
+const chatWho = uid => crypto.createHmac("sha256", SECRET).update("chat:" + uid).digest("hex").slice(0, 12);
+const chatAdmin = uid => {
+  const acct = store.get("users/" + uid);
+  return !!(acct && acct.email && CHAT_ADMINS.has(String(acct.email).toLowerCase()));
+};
+function chatMe(uid) {
+  const ban = store.get("chatban/" + uid);
+  return { talk: !!store.get("users/" + uid), admin: chatAdmin(uid), quiet: !!(ban && ban.until > Date.now()), who: chatWho(uid) };
+}
+/* what a player is called in the chat: the name and colour they race under */
+function chatName(uid) {
+  const prof = store.get("data/users/" + uid + "/profile") || {};
+  const acct = store.get("users/" + uid) || {};
+  const name = cleanChat(prof.name || String(acct.name || "").split(" ")[0] || "pilot").slice(0, 14) || "pilot";
+  const color = /^#[0-9a-f]{6}$/i.test(String(prof.color || "")) ? String(prof.color) : "";
+  return { name, color };
+}
+function chatSay(uid, raw) {
+  const now = Date.now();
+  if (!store.get("users/" + uid)) return "signin";
+  const ban = store.get("chatban/" + uid);
+  if (ban && ban.until > now) return "quiet";
+  const text = cleanChat(raw);
+  if (!text) return "empty";
+  const last = chatLast.get(uid);
+  if (last && last.text === text && now - last.at < 30000) return "again";
+  if (!chatThrottle.take(uid, now)) return "slow";
+  chatLast.set(uid, { text, at: now });
+  if (chatLast.size > 5000) for (const [k, v] of chatLast) if (now - v.at > 60000) chatLast.delete(k);
+  const { name, color } = chatName(uid);
+  chat.say({ mid: "m" + now.toString(36) + crypto.randomBytes(4).toString("hex"), at: now,
+             uid, who: chatWho(uid), name, color, text });
+  return null;
+}
+/* a change goes out once, the same bytes to everyone listening */
+chat.onChange(change => {
+  const msg = JSON.stringify(Object.assign({ type: "chat" },
+    change.add ? { add: chat.view(change.add) } : { gone: change.gone }));
+  for (const p of peers.values()) if (p.chat) p.conn.send(msg);
+});
 
 /* ---------- the purse ----------
    The server holds the only copy. Clients report what they earned on a run and
@@ -392,7 +446,7 @@ function readFor(uid, p) {
     const w = purse(uid);
     return Object.assign({}, body || {}, { coins: w.coins, gems: w.gems, ledger: true });
   }
-  if (p.startsWith("wallets/") || p.startsWith("identities/")) return null;
+  if (p.startsWith("wallets/") || p.startsWith("identities/") || p.startsWith("chatban/")) return null;
   const u = /^users\/([^/]+)$/.exec(p);
   if (u) return u[1] === uid ? body : null;              // your own account only
   return body;
@@ -480,7 +534,7 @@ function writeFor(uid, p, data, mode) {
     return null;
   }
 
-  if (p.startsWith("wallets/") || p.startsWith("results/") ||
+  if (p.startsWith("wallets/") || p.startsWith("results/") || p.startsWith("chatban/") ||
       p.startsWith("users/") || p.startsWith("identities/")) return "not_permitted";
   if (mode === "update") store.update(p, data); else store.set(p, data);
   return null;
@@ -769,6 +823,32 @@ function onMessage(peerId, raw) {
       return reply(true);
     }
 
+    /* The chat. `sub` is the page saying whether it is showing the chat -
+       on the home screen it is, at the gate and in a race it is not, and
+       nothing is sent to it then. Each time it starts listening it gets the
+       history whole, which is how it catches up after a race. */
+    case "chat": {
+      if (m.op === "sub") {
+        me.chat = !!m.on;
+        if (me.chat) me.conn.json({ type: "chat", all: chat.view(), me: chatMe(me.uid) });
+        return reply(true);
+      }
+      if (m.op === "say") {
+        const err = chatSay(me.uid, m.text);
+        return reply(!err, err ? { code: err } : {});
+      }
+      if (m.op === "del") {
+        if (!chatAdmin(me.uid)) return reply(false, { code: "not_permitted" });
+        const line = chat.remove(String(m.mid || ""));
+        if (line && line.uid && !chatAdmin(line.uid)) {
+          store.set("chatban/" + line.uid, { until: Date.now() + CHAT_BAN_MS, by: me.uid, at: Date.now() });
+          console.log("chat: took down a line by %s and quietened them for a day", line.uid.slice(0, 10));
+        }
+        return reply(true);
+      }
+      return reply(false, { code: "invalid_argument" });
+    }
+
     default:
       return reply(false, { code: "invalid_argument" });
   }
@@ -985,7 +1065,7 @@ attach(server, "/ws", (conn, req) => {
   heldByIp.set(ip, held + 1);
 
   const peerId = crypto.randomBytes(8).toString("hex");
-  peers.set(peerId, { conn, uid, presence: {}, rooms: new Map() });
+  peers.set(peerId, { conn, uid, presence: {}, rooms: new Map(), chat: false });
   conn.json({ type: "ready", peer: peerId, uid, now: Date.now() });
   broadcastPeers();
   conn.on("message", raw => onMessage(peerId, raw));
@@ -1008,6 +1088,7 @@ attach(server, "/ws", (conn, req) => {
     await shared.start();
     console.log("shared store: postgres" + (REGION ? " (region " + REGION + ")" : ""));
   }
+  await chat.start();
   server.listen(PORT, () => {
     console.log("Cursor Clash on http://localhost:" + PORT);
     console.log("store: " + DATA + (shared ? "  (races only; accounts are shared)" : ""));

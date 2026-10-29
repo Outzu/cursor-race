@@ -493,6 +493,80 @@
   #ladderHud .lrow b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
   #ladderHud .none { font-family: var(--data); font-size: 10px; color: var(--faint); line-height: 1.5; }
   #ladderHud h3.second { margin-top: 9px; }
+  /* ---------- the chat ----------
+     On a screen wide enough it sits in the empty band down the right, under
+     the leaderboard; anywhere narrower it is behind a button beside the
+     leaderboard and opens as a page of its own. It is not there at all in a
+     race, or anywhere the chat does not exist (it is the hosted server's). */
+  #chat { display: none; position: fixed; z-index: 73; flex-direction: column;
+    font-family: var(--data); color: var(--dim);
+    background: color-mix(in srgb, var(--field) 92%, transparent);
+    box-shadow: inset 0 0 0 1px var(--wall-line); border-radius: 4px; }
+  body.chatdock #chat { display: flex; width: 320px;
+    right: max(14px, env(safe-area-inset-right, 0px));
+    top: var(--chat-top, 160px);
+    bottom: calc(max(14px, env(safe-area-inset-bottom, 0px)) + 44px); }
+  body.chatopen #chat { display: flex; inset: 0; z-index: 91; border-radius: 0; box-shadow: none;
+    background: var(--void);
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px); }
+  body.focus #chat, body.settings #chat { display: none; }
+  #chat .chead { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 12px 6px; font-size: 9px; font-weight: 600; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--faint); }
+  #chat .chead .x { display: none; width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%;
+    background: color-mix(in srgb, var(--field) 88%, transparent); color: var(--ink);
+    box-shadow: inset 0 0 0 1px var(--wall-line); font: inherit; font-size: 15px; cursor: pointer; }
+  body.chatopen #chat .chead { padding: 14px 16px 8px; font-size: 11px; }
+  body.chatopen #chat .chead .x { display: grid; place-items: center; }
+  #chat .clist { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+    padding: 2px 12px 8px; scrollbar-width: thin; scrollbar-color: var(--wall-line) transparent; }
+  body.chatopen #chat .clist { padding: 2px 16px 10px; }
+  #chat .cl { position: relative; padding: 3px 0; font-size: 12px; line-height: 1.5;
+    color: #c9d3ea; overflow-wrap: anywhere; }
+  body.chatopen #chat .cl { font-size: 14px; }
+  #chat .cl b { font-weight: 600; margin-right: 7px; color: var(--aqua); }
+  #chat .cl.mine { color: var(--ink); }
+  #chat .cl .acts { display: none; position: absolute; top: 2px; right: 0; gap: 4px; }
+  #chat .cl:hover .acts, #chat .cl.pick .acts { display: flex; }
+  #chat .acts button { padding: 2px 7px; border: 0; border-radius: 3px; cursor: pointer;
+    font: inherit; font-size: 9px; letter-spacing: .1em; text-transform: uppercase;
+    background: var(--field); color: var(--dim); box-shadow: inset 0 0 0 1px var(--wall-line); }
+  #chat .acts button:hover { color: var(--ink); }
+  #chat .acts button.rm { color: #ff6b6b; }
+  #chat .cnone { padding: 8px 0; font-size: 11px; line-height: 1.6; color: var(--faint); }
+  #chat .cfoot { padding: 8px; border-top: 1px solid color-mix(in srgb, var(--wall-line) 70%, transparent); }
+  #chat form { display: flex; gap: 6px; margin: 0; }
+  #chat input { flex: 1; min-width: 0; padding: 8px 10px; border: 0; border-radius: 3px; outline: none;
+    font: inherit; font-size: 12px; color: var(--ink);
+    background: color-mix(in srgb, var(--void) 70%, transparent); box-shadow: inset 0 0 0 1px var(--wall-line); }
+  #chat input:focus { box-shadow: inset 0 0 0 1px var(--aqua); }
+  #chat form button { padding: 0 12px; border: 0; border-radius: 3px; cursor: pointer;
+    font: inherit; font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase;
+    background: var(--aqua); color: var(--void); }
+  #chat form button:disabled { opacity: .5; cursor: default; }
+  #chat .cnote { min-height: 14px; padding: 5px 2px 0; font-size: 10px; color: var(--faint); }
+  #chat .cnote.bad { color: var(--amber); }
+  #chat .cnote button { padding: 0; border: 0; background: none; font: inherit; color: var(--aqua); cursor: pointer; text-decoration: underline; }
+  #chat .signin { display: block; padding: 9px 10px; border-radius: 3px; text-align: center; text-decoration: none;
+    font-size: 11px; letter-spacing: .08em; color: var(--aqua); box-shadow: inset 0 0 0 1px var(--wall-line); }
+  #chat .signin:hover { box-shadow: inset 0 0 0 1px var(--aqua); }
+  body.chatopen #chat .cfoot { padding: 10px 16px 14px; }
+  body.chatopen #chat input { font-size: 16px; padding: 11px 12px; }   /* a phone zooms in on anything smaller */
+  body.chatopen #chat form button { padding: 0 16px; font-size: 12px; }
+  #chatBtn { position: fixed; z-index: 74; display: grid; place-items: center;
+    top: max(14px, env(safe-area-inset-top, 0px));
+    right: calc(max(14px, env(safe-area-inset-right, 0px)) + 262px);
+    width: 38px; height: 38px; padding: 0; border: 0; border-radius: 50%; cursor: pointer; color: var(--dim);
+    background: color-mix(in srgb, var(--field) 88%, transparent); box-shadow: inset 0 0 0 1px var(--wall-line); }
+  #chatBtn[hidden] { display: none; }
+  #chatBtn:hover { color: var(--ink); }
+  #chatBtn svg { width: 20px; height: 20px; }
+  #chatBtn .badge { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px;
+    border-radius: 9px; background: var(--amber); color: var(--void);
+    font: 700 10px/17px var(--data); text-align: center; }
+  #chatBtn .badge[hidden] { display: none; }
+  body.focus #chatBtn, body.settings #chatBtn { display: none; }
+
   .lgroup { display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
     font-family: var(--data); font-size: 9px; letter-spacing: .14em; text-transform: uppercase;
     color: var(--aqua); margin: 10px 0 4px; }
@@ -1150,6 +1224,8 @@
       right: calc(max(14px, env(safe-area-inset-right, 0px)) + 63px);
     }
     #ladderBtn img { width: 34px; height: 34px; }
+    #chatBtn { width: 57px; height: 57px; right: calc(max(14px, env(safe-area-inset-right, 0px)) + 126px); }
+    #chatBtn svg { width: 28px; height: 28px; }
     #ladderHud { width: min(150px, 42vw); padding: 7px 8px 8px;
       right: max(14px, env(safe-area-inset-right, 0px));
       top: calc(max(14px, env(safe-area-inset-top, 0px)) + 63px); }
@@ -1248,6 +1324,15 @@
   <img alt="" decoding="async">
 </button>
 <div id="netSig" hidden></div>
+<button id="chatBtn" type="button" hidden aria-pressed="false" title="Chat">
+  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h16v10H10l-4.5 3.5V15.5H4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>
+  <span class="badge" hidden></span>
+</button>
+<section id="chat" aria-label="Chat">
+  <div class="chead"><span>Chat</span><button class="x" type="button" aria-label="Close the chat">&#x2715;</button></div>
+  <div class="clist" role="log" aria-live="polite"></div>
+  <div class="cfoot"></div>
+</section>
 <div id="terms" class="sheetwrap"></div>
 <div id="boards" class="sheetwrap"></div>
 
@@ -4704,7 +4789,7 @@
     if (pingUntil && now > pingUntil) { pingUntil = 0; $("coinLine").classList.remove("ping"); }
     if (now - lastRail > 140) {
       lastRail = now;
-      paintRail(); drawPreviews(now); tickVeil(); paintLadderHud(); paintNetSig();
+      paintRail(); drawPreviews(now); tickVeil(); paintLadderHud(); paintNetSig(); paintChat();
       $("pingTag").textContent = (S.ping === null ? "" : "ping " + S.ping + " ms") + perfWord();
     }
     readout.hidden = !(S.phase === "racing" || S.phase === "watching");
@@ -5090,6 +5175,213 @@
       '<h3 class="second">Single player</h3>' + list(S.boardSolo);
     if (hud.dataset.h !== html) { hud.dataset.h = html; hud.innerHTML = html; }
   }
+
+  /* ---------- the chat ----------
+     The hosted server's own (the shim offers it; claude.ai does not). The
+     page listens only while it is showing the home screen: from the moment a
+     gate opens until the race is over nothing arrives, so a race never shares
+     the line or the frame with it, and on the way back the history comes
+     whole and anything missed is counted on the button. */
+  const CH = { api: null, lines: [], me: { talk: false, admin: false, quiet: false, who: "" },
+               open: false, dock: false, listening: false, seen: 0, note: "", noteBad: false, noteAt: 0,
+               muted: new Set(), foot: "" };
+  try { CH.seen = Number(localStorage.getItem("cr.chatSeen")) || 0; } catch (e) {}
+  try { (JSON.parse(localStorage.getItem("cr.chatMute") || "[]") || []).forEach(w => CH.muted.add(String(w))); } catch (e) {}
+  const chatList = $("chat").querySelector(".clist"), chatFoot = $("chat").querySelector(".cfoot");
+  let chatInput = null;
+
+  async function startChat() {
+    if (!(window.claude && window.claude.host === "self")) return;     // claude.ai has no chat of ours
+    try { CH.api = await window.claude.use("chat"); } catch (e) { CH.api = null; }
+    if (!CH.api) return;
+    CH.api.on(m => {
+      if (m.all) {
+        CH.lines = m.all.slice();
+        if (m.me) CH.me = m.me;
+        CH.foot = "";
+        drawChat(true);
+      } else if (m.add) {
+        CH.lines.push(...m.add);
+        if (CH.lines.length > 60) CH.lines.splice(0, CH.lines.length - 60);
+        drawChat(false, m.add);
+      } else if (m.gone) {
+        const gone = new Set(m.gone);
+        CH.lines = CH.lines.filter(l => !gone.has(l.mid));
+        drawChat(true);
+      }
+      chatSeen();
+    });
+    paintChat();
+  }
+
+  const chatShown = () => CH.dock || CH.open;
+  function chatSeen() {
+    if (!chatShown() || !CH.lines.length) return;
+    const newest = CH.lines[CH.lines.length - 1].at;
+    if (newest > CH.seen) { CH.seen = newest; try { localStorage.setItem("cr.chatSeen", String(newest)); } catch (e) {} }
+  }
+  const chatUnread = () => CH.lines.filter(l => l.at > CH.seen && l.who !== CH.me.who && !CH.muted.has(l.who)).length;
+
+  function chatLine(l) {
+    const el = document.createElement("div");
+    el.className = "cl" + (l.who === CH.me.who ? " mine" : "");
+    el.dataset.mid = l.mid;
+    el.title = new Date(l.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    const b = document.createElement("b");
+    b.textContent = l.name || "pilot";
+    if (/^#[0-9a-f]{6}$/i.test(l.color || "")) b.style.color = l.color;
+    const t = document.createElement("span");
+    t.textContent = l.text;
+    el.append(b, t);
+    if (l.who !== CH.me.who || CH.me.admin) {
+      const acts = document.createElement("div");
+      acts.className = "acts";
+      if (l.who !== CH.me.who) acts.insertAdjacentHTML("beforeend", '<button type="button" data-act="mute">mute</button>');
+      if (CH.me.admin) acts.insertAdjacentHTML("beforeend", '<button type="button" class="rm" data-act="rm">take down</button>');
+      el.append(acts);
+    }
+    return el;
+  }
+  /* the list: rebuilt when the history arrives, appended to as lines come in,
+     and held to the bottom only if that is where the reader already was */
+  function drawChat(whole, added) {
+    const atEnd = chatList.scrollHeight - chatList.scrollTop - chatList.clientHeight < 48;
+    const shown = l => !CH.muted.has(l.who);
+    if (whole) {
+      chatList.textContent = "";
+      const rows = CH.lines.filter(shown);
+      if (!rows.length) chatList.innerHTML = '<div class="cnone">Nobody has said anything yet. Say hello.</div>';
+      else chatList.append(...rows.map(chatLine));
+    } else {
+      const none = chatList.querySelector(".cnone");
+      if (none) none.remove();
+      for (const l of added) if (shown(l)) chatList.append(chatLine(l));
+      while (chatList.children.length > 60) chatList.firstChild.remove();
+    }
+    if (whole || atEnd) chatList.scrollTop = chatList.scrollHeight;
+    paintChatFoot();
+  }
+  function chatSay(text, bad) {
+    CH.note = text; CH.noteBad = !!bad; CH.noteAt = performance.now();
+    const n = chatFoot.querySelector(".cnote");
+    if (n) {
+      const keep = n.querySelector("button[data-act='unmute']");
+      n.textContent = text;
+      if (keep) { n.append(" "); n.append(keep); }
+      n.classList.toggle("bad", !!bad);
+    }
+  }
+  /* the foot: a box to type in, or what stands in its way */
+  function paintChatFoot() {
+    const me = CH.me;
+    const key = (me.talk ? "t" : "g") + (me.quiet ? "q" : "") + CH.muted.size;
+    if (CH.foot === key) return;
+    CH.foot = key;
+    const unmute = CH.muted.size ? ' <button type="button" data-act="unmute">unmute ' + CH.muted.size + '</button>' : "";
+    if (!me.talk) {
+      chatFoot.innerHTML = '<a class="signin" href="/auth/google">Sign in with Google to talk</a>' +
+        '<div class="cnote">Anyone can read.' + unmute + '</div>';
+      chatInput = null;
+      return;
+    }
+    if (me.quiet) {
+      chatFoot.innerHTML = '<div class="cnote bad">A line of yours was taken down. You can talk again tomorrow.' + unmute + '</div>';
+      chatInput = null;
+      return;
+    }
+    chatFoot.innerHTML = '<form autocomplete="off"><input type="text" maxlength="200" placeholder="Say something" aria-label="Message">' +
+      '<button type="submit">Send</button></form><div class="cnote">' + unmute + '</div>';
+    chatInput = chatFoot.querySelector("input");
+  }
+  const CHAT_WHY = { slow: "Easy - one line every couple of seconds.", again: "You just said that.",
+                     signin: "Sign in with Google to talk.", quiet: "You can't talk for now.", empty: "" };
+  chatFoot.addEventListener("submit", e => {
+    e.preventDefault();
+    if (!chatInput || !CH.api) return;
+    const text = chatInput.value.trim();
+    if (!text) return;
+    const btn = chatFoot.querySelector("form button");
+    btn.disabled = true;
+    CH.api.say(text).then(() => { chatInput.value = ""; chatSay(""); },
+      err => {
+        const code = err && err.code;
+        chatSay(CHAT_WHY[code] !== undefined ? CHAT_WHY[code] : "Not sent - the line to the server dropped.", true);
+        if (code === "quiet") { CH.me.quiet = true; CH.foot = ""; paintChatFoot(); }
+      })
+      .then(() => { btn.disabled = false; if (chatInput && chatShown()) chatInput.focus(); });
+  });
+  chatFoot.addEventListener("click", e => {
+    const b = e.target.closest("button[data-act='unmute']");
+    if (!b) return;
+    CH.muted.clear();
+    try { localStorage.removeItem("cr.chatMute"); } catch (err) {}
+    CH.foot = ""; drawChat(true);
+  });
+  chatList.addEventListener("click", e => {
+    const row = e.target.closest(".cl");
+    if (!row) return;
+    const act = e.target.closest("button[data-act]");
+    const l = CH.lines.find(x => x.mid === row.dataset.mid);
+    if (!act) {                                      // a tap shows a line's buttons, where there is no hover
+      chatList.querySelectorAll(".cl.pick").forEach(x => { if (x !== row) x.classList.remove("pick"); });
+      row.classList.toggle("pick");
+      return;
+    }
+    if (!l) return;
+    if (act.dataset.act === "mute") {
+      CH.muted.add(l.who);
+      try { localStorage.setItem("cr.chatMute", JSON.stringify([...CH.muted].slice(-200))); } catch (err) {}
+      CH.foot = ""; drawChat(true);
+    } else if (act.dataset.act === "rm" && CH.api) {
+      CH.api.remove(l.mid).catch(() => chatSay("Could not take it down.", true));
+    }
+  });
+  function chatShut() {
+    if (!CH.open) return;
+    CH.open = false;
+    document.body.classList.remove("chatopen");
+    $("chatBtn").setAttribute("aria-pressed", "false");
+    paintChat();
+  }
+  $("chatBtn").addEventListener("click", () => {
+    if (CH.open) { chatShut(); return; }
+    CH.open = true;
+    document.body.classList.add("chatopen");
+    $("chatBtn").setAttribute("aria-pressed", "true");
+    chatList.scrollTop = chatList.scrollHeight;
+    chatSeen(); paintChat();
+  });
+  $("chat").querySelector(".chead .x").addEventListener("click", chatShut);
+
+  /* Where the chat may be, decided with the rest of the corner. A screen is
+     wide enough to dock it when the panel would clear the middle column. */
+  const chatWide = () => window.innerWidth >= 1680 && window.innerHeight >= 640 && !onAPhone();
+  let chatTop = -1;
+  function paintChat() {
+    if (!CH.api) return;
+    const b = document.body.classList;
+    const here = demoBg() && !b.contains("focus") && !b.contains("settings") && !b.contains("terms") && !b.contains("boards");
+    if (here !== CH.listening) { CH.listening = here; CH.api.listen(here); }
+    if (!here && CH.open) chatShut();
+    if (!here && chatInput && document.activeElement === chatInput) chatInput.blur();
+    const dock = here && chatWide();
+    if (dock !== CH.dock) { CH.dock = dock; b.toggle("chatdock", dock); if (dock) { chatList.scrollTop = chatList.scrollHeight; chatSeen(); } }
+    if (dock) {                                       // under the leaderboard, wherever its bottom is today
+      const hud = $("ladderHud");
+      const top = Math.round(hud.hidden ? 14 : hud.getBoundingClientRect().bottom + 10);
+      if (top !== chatTop) { chatTop = top; $("chat").style.setProperty("--chat-top", top + "px"); }
+    }
+    const btn = $("chatBtn");
+    const wantBtn = here && !dock;
+    if (btn.hidden === wantBtn) btn.hidden = !wantBtn;
+    const n = wantBtn && !CH.open ? chatUnread() : 0;
+    const badge = btn.querySelector(".badge");
+    const label = n ? (n > 9 ? "9+" : String(n)) : "";
+    if (badge.textContent !== label) badge.textContent = label;
+    if (badge.hidden === !!n) badge.hidden = !n;
+    if (CH.note && performance.now() - CH.noteAt > 4000) chatSay("");
+  }
+  startChat();
 
   /* ---------- lobby music ----------
      Browsers refuse to start audio before the viewer has interacted, so the
@@ -6962,6 +7254,8 @@
 
   window.addEventListener("keydown", e => {
     if (document.activeElement === nameInput) return;
+    if (e.code === "Escape" && document.body.classList.contains("chatopen")) { chatShut(); return; }
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest("#chat")) return;
     if (e.code === "Escape" && document.body.classList.contains("terms")) { closeTerms(); return; }
     if (e.code === "Escape" && document.body.classList.contains("boards")) { closeBoards(); return; }
     if (e.code === "Escape" && S.phase === "watching" && S.death) { leaveStands(); return; }

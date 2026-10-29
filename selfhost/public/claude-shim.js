@@ -7,6 +7,7 @@
    Implemented: use("room")  -> connected, onConnection, emit, on, presence, peers, onPeers
                 use("db")    -> doc(path) with get/set/update/delete/acquire/onSnapshot/collection
                 use("user")  -> id, me, isOwner, canEdit, can, profiles
+                use("chat")  -> listen, say, remove, on   (this server's own; not on claude.ai)
    Anything else resolves null, exactly as an unavailable capability does. */
 
 (function () {
@@ -22,6 +23,7 @@
   var connFns = [], peerFns = [], topicFns = new Map(), docFns = new Map();
   var readyWaiters = [];
   var rooms = new Map();   // name -> named room state
+  var chatFns = [], chatOn = false;
 
   function fire(list, arg) {
     for (var i = 0; i < list.length; i++) {
@@ -52,9 +54,12 @@
           send({ type: "join", room: name });
           if (Object.keys(r.presence).length) send({ type: "presence", room: name, patch: r.presence });
         });
+        if (chatOn) send({ type: "chat", op: "sub", on: true });
         fire(readyWaiters, true); readyWaiters = [];
         return;
       }
+
+      if (m.type === "chat") { fire(chatFns, m); return; }
 
       if (m.type === "ack") {
         var p = pending.get(m.id);
@@ -363,6 +368,21 @@
 
   var db = Object.freeze({ doc: doc, collection: collection });
 
+  /* The home screen's chat. The page says when it is showing it; only then
+     does the server send anything, and each time it starts listening it is
+     handed the history whole. */
+  var chat = Object.freeze({
+    listen: function (on) {
+      on = !!on;
+      if (on === chatOn) return;
+      chatOn = on;
+      send({ type: "chat", op: "sub", on: on });       // if offline, the reconnect re-asks
+    },
+    say: function (text) { return call({ type: "chat", op: "say", text: String(text) }).then(function () {}); },
+    remove: function (mid) { return call({ type: "chat", op: "del", mid: String(mid) }).then(function () {}); },
+    on: function (fn) { chatFns.push(fn); return remover(chatFns, fn); }
+  });
+
   /* ---------- the one entry point the game uses ---------- */
   var booted = fetch("/api/session", { credentials: "same-origin" })
     .then(function (r) { return r.json(); })
@@ -378,11 +398,12 @@
     });
 
   window.claude = {
+    host: "self",          // the game asks for the chat only here
     use: function (name) {
-      if (name !== "room" && name !== "db" && name !== "user") return Promise.resolve(null);
+      if (name !== "room" && name !== "db" && name !== "user" && name !== "chat") return Promise.resolve(null);
       return booted.then(function (ok) {
         if (!ok && !ready) return null;
-        return name === "room" ? room : name === "db" ? db : user;
+        return name === "room" ? room : name === "db" ? db : name === "chat" ? chat : user;
       });
     }
   };
