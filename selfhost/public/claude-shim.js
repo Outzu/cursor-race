@@ -47,6 +47,8 @@
       if (m.type === "ready") {
         uid = m.uid; myPeer = m.peer; ready = true;
         if (!connected) { connected = true; fire(connFns, true); }
+        // tables may send just what changed, as "pd"; said before any join, so it is known in time
+        send({ type: "caps", pd: true });
         // a reconnect starts a fresh peer, so re-assert what this tab was doing
         if (Object.keys(myPresence).length) send({ type: "presence", patch: myPresence });
         docFns.forEach(function (_, path) { send({ type: "watch", path: path }); });
@@ -66,6 +68,12 @@
         if (!p) return;
         pending.delete(m.id);
         if (m.ok) p.resolve(m); else p.reject({ code: m.code || "unavailable", message: m.code || "refused" });
+        return;
+      }
+
+      if (m.type === "pd") {
+        var pr = rooms.get(m.room);
+        if (pr && m.d && typeof m.d === "object") pr.patch(m.d);
         return;
       }
 
@@ -302,6 +310,30 @@
       }
       for (i = 0; i < before.length; i++) if (!now[before[i].peer]) left.push(before[i]);
       fire(st.peerFns, { peers: st.peers, joined: joined, left: left, updated: updated });
+    };
+
+    /* Just what changed, for the pilots who changed: their presence is
+       rebuilt with it, everyone else's entry is passed on untouched. The
+       callback looks as it always did - a whole roster - so nothing that
+       listens has to know the difference. */
+    st.patch = function (d) {
+      var list = st.peers.slice(), changed = [], i, k;
+      for (i = 0; i < list.length; i++) {
+        var dp = d[list[i].peer];
+        if (!dp) continue;
+        var old = list[i], pres = {};
+        for (k in old.presence) pres[k] = old.presence[k];
+        for (k in dp) { if (dp[k] === null) delete pres[k]; else pres[k] = dp[k]; }
+        list[i] = Object.freeze({
+          peer: old.peer, by: old.by, isMe: old.isMe, sameTab: old.sameTab,
+          kind: old.kind, guest: old.guest,
+          presence: Object.freeze(pres), updatedAt: Date.now()
+        });
+        changed.push(list[i]);
+      }
+      if (!changed.length) return;
+      st.peers = Object.freeze(list);
+      fire(st.peerFns, { peers: st.peers, joined: [], left: [], updated: changed });
     };
 
     st.event = function (m) {

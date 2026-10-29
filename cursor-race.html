@@ -3530,7 +3530,10 @@
               if (!p.sameTab && S.banned.has(uid)) r.emit("kick", { uid }).catch(() => {});
             }
           }
-          paintRail();
+          /* Mid-race the roster turns over sixty times a second; the standings
+             beside the channel are repainted on the HUD's own beat then, not on
+             every cursor that moves. */
+          if (S.phase !== "racing") paintRail();
           if (S.phase === "idle" || (S.phase === "open" && !withinWarmup())) paintVeil();
         }, () => { S.peers = []; });
         r.on("kick", kickedBy, () => {});
