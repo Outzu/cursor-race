@@ -2030,10 +2030,27 @@
     return true;
   }
 
+  /* A colour at some opacity, as a canvas wants it. Tails ask for one per
+     segment per frame, and building each string afresh - a pattern test, a
+     parse, five joins - was the busiest thing the home screen did, and most
+     of its garbage. So opacity is taken to the nearest hundredth, finer than
+     the eye can tell on a stroke, and each string is made once and handed
+     back the same every time after, which the canvas also parses once. */
+  const rgbaRows = new Map();
   function withA(hex, a) {
-    if (typeof hex !== "string" || !/^#[0-9a-f]{6}$/i.test(hex)) return "rgba(139,153,187," + a + ")";
-    const n = parseInt(hex.slice(1), 16);
-    return "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + "," + a + ")";
+    let row = rgbaRows.get(hex);
+    if (!row) {
+      let pre = "rgba(139,153,187,";
+      if (typeof hex === "string" && /^#[0-9a-f]{6}$/i.test(hex)) {
+        const n = parseInt(hex.slice(1), 16);
+        pre = "rgba(" + ((n >> 16) & 255) + "," + ((n >> 8) & 255) + "," + (n & 255) + ",";
+      }
+      if (rgbaRows.size > 300) rgbaRows.clear();       // only ever a few dozen colours; a bound all the same
+      row = { pre, at: [] };
+      rgbaRows.set(hex, row);
+    }
+    const k = !(a > 0) ? 0 : a >= 1 ? 100 : Math.round(a * 100);
+    return row.at[k] || (row.at[k] = row.pre + k / 100 + ")");
   }
   function glowTail(c, pts, colorAt, width) {
     if (!pts || pts.length < 2) return;
@@ -3145,13 +3162,26 @@
   };
 
   const $ = id => document.getElementById(id);
-  const stage = $("stage"), cv = $("cv"), ctx = cv.getContext("2d");
+  /* The channel canvas is painted edge to edge every frame, so it is opaque -
+     the compositor need not blend it with what is behind. And it is
+     desynchronized: where the browser can (Chrome on Windows and ChromeOS),
+     it goes to the screen without waiting its turn behind the rest of the
+     page, which takes up to a frame off the time between the hand moving and
+     the cursor moving. Where it cannot, the browser quietly does what it
+     always did. ?lowlat=0, or cr.lowlat=off in storage, turns it off, should
+     a screen ever tear. */
+  const LOW_LAT = (() => {
+    try { if (/[?&]lowlat=0\b/.test(location.search) || localStorage.getItem("cr.lowlat") === "off") return false; } catch (e) {}
+    return true;
+  })();
+  const stage = $("stage"), cv = $("cv"), ctx = cv.getContext("2d", { alpha: false, desynchronized: LOW_LAT });
   const veil = $("veil"), readout = $("readout"), distBig = $("distBig");
   const board = $("board"), nameInput = $("nameInput");
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
   /* ---------- canvas fit ---------- */
   let scale = 1, offX = 0, offY = 0, hatch = null;
+  let stageRect = null;                 // where the stage sits, as last asked; see pointAt
   function buildHatch() {
     const p = document.createElement("canvas");
     p.width = p.height = 10;
@@ -3167,6 +3197,7 @@
   let dprCap = 2;
   function fit() {
     const r = stage.getBoundingClientRect();
+    stageRect = null;
     if (r.width < 2 || r.height < 2) return;   // hidden, e.g. on the pilot page
     const dpr = Math.min(dprCap, window.devicePixelRatio || 1);
     cv.width = Math.max(1, Math.round(r.width * dpr));
@@ -3184,16 +3215,22 @@
      frame sooner, which is the one lag a pilot feels in the hand. Both are
      bound; the later of the two for any one movement finds nothing to
      change. */
+  /* A gaming mouse reports a thousand times a second or more, and asking
+     the page where the stage sits on every one of those is a layout check
+     each time - a forced layout whenever anything on the page changed since
+     the last. So it is asked at most once a frame: the frame forgets the
+     answer, and the first movement after it asks again. */
+  const NO_SLIP = Object.freeze({ x: 0, y: 0 });
   function pointAt(e) {
     if (drags(e.pointerType)) return;   // a finger or a pen drags; only a mouse points
-    const r = stage.getBoundingClientRect();
+    const r = stageRect || (stageRect = stage.getBoundingClientRect());
     const dpr = Math.min(dprCap, window.devicePixelRatio || 1);
     const tx = ((e.clientX - r.left) * dpr - offX) / scale, ty = ((e.clientY - r.top) * dpr - offY) / scale;
     if (slipping() && S.slipOff && lastPt) {        // the banana: every move goes the other way
       S.slipOff.x -= 2 * (tx - lastPt[0]); S.slipOff.y -= 2 * (ty - lastPt[1]);
     }
-    lastPt = [tx, ty];
-    const o = S.slipOff || { x: 0, y: 0 };
+    if (lastPt) { lastPt[0] = tx; lastPt[1] = ty; } else lastPt = [tx, ty];
+    const o = S.slipOff || NO_SLIP;
     S.cx = Math.max(R, Math.min(W - R, tx + o.x));
     S.cy = Math.max(R, Math.min(H - R, ty + o.y));
     S.inside = true;
@@ -4881,6 +4918,7 @@
     if (gap > 330 && gap < 20000 && !document.hidden && lastFrameAt > shownAt)   // a tab coming back is not a stall
       console.warn("[cursorclash] stall: no frame for " + Math.round(gap) + " ms (" + stallWhere() + ")");
     lastFrameAt = now;
+    stageRect = null;                      // the pointer asks again, once, this frame
     watchFrames(now);
     kickIdle(now);
     step(now);
@@ -5752,7 +5790,7 @@
     PTR.x = e.clientX; PTR.y = e.clientY; PTR.seen = true;
   }, { passive: true, capture: true });
 
-  const SW = { voice: null, mode: "", x: 0, y: 0, t: 0, vx: 0, vy: 0, v: 0, pk: 0, turn: 0, hx: 0, hy: 0, at: 0 };
+  const SW = { voice: null, mode: "", x: 0, y: 0, t: 0, vx: 0, vy: 0, v: 0, pk: 0, turn: 0, hx: 0, hy: 0, at: 0, sent: 0 };
   function steerSound(now) {
     const racing = S.phase === "racing" && S.joined && !S.death;
     // the gate's countdown and watching a race are neither: quiet there
@@ -5795,6 +5833,11 @@
       SW.hx = hx; SW.hy = hy; SW.at = now;
     }
     SW.turn = Math.max(turn, SW.turn * Math.exp(-dt / 0.14));
+    /* The knobs are turned at most sixty times a second: each turn is a few
+       events on the audio thread's timeline, and a fast screen would add
+       them at its own rate for no audible gain - the ramps smooth it anyway */
+    if (now - SW.sent < 16) return;
+    SW.sent = now;
     const i = Math.max(0, Math.min(1, (SW.v - 220) / 1500));
     SW.voice.out.gain.setTargetAtTime(Math.min(1, musicVol * CUE_LEVEL), actx.currentTime, 0.1);
     SW.voice.set(i, SW.turn, actx.currentTime, !racing);
@@ -6203,9 +6246,12 @@
       lg.drawImage(src, (1280 - dw) / 2, (720 - dh) / 2, dw, dh);
       liveTex.needsUpdate = true;
       if (light) lightFrom(live);
+      dirty = 2;
     }
     let pic = null, shown = null, frameI = 0, frameAt = 0;
+    let dirty = 2;                         // frames still to draw; see the loop below
     function setPicture(src) {
+      dirty = 2;
       pic = src ? art(src) : null; shown = null; frameI = 0; frameAt = 0;
       if (!pic) { faceMat.map = blankTex; faceMat.needsUpdate = true; lightFrom(blankTex.image); return; }
       faceMat.map = liveTex; faceMat.needsUpdate = true;
@@ -6239,6 +6285,7 @@
     function size() {
       const w = host.clientWidth, h = host.clientHeight;
       if (!w || !h) return;
+      dirty = 2;
       renderer.setSize(w, h, false);
       camera.aspect = w / h; camera.updateProjectionMatrix();
       const d = 41;
@@ -6256,10 +6303,23 @@
       link.style.width = (x1 - x0) + "px"; link.style.height = (y1 - y0) + "px";
     }
     const ro = new ResizeObserver(size); ro.observe(host); size();
+    /* The board stands still: the camera never moves, and what changes is the
+       picture (a new one every six seconds, or a GIF's next frame) and the
+       beacon going on and off. So it is drawn when one of those changes and
+       not otherwise - a canvas not drawn to keeps showing its last frame.
+       It used to render the whole scene at the display's rate, a hundred and
+       sixty five times a second on a fast screen, beside the channel that
+       actually moves. Twice per change, in case a texture is still uploading. */
+    let wasBlink = null;
     renderer.setAnimationLoop(now => {
       tickPicture(now);
       const blink = Math.sin(now / 500) > 0.6;
-      beaconLight.intensity = blink ? 3 : 0; beacon.material.color.setHex(blink ? 0xff3b3b : 0x5a1515);
+      if (blink !== wasBlink) {
+        wasBlink = blink; dirty = 2;
+        beaconLight.intensity = blink ? 3 : 0; beacon.material.color.setHex(blink ? 0xff3b3b : 0x5a1515);
+      }
+      if (!dirty) return;
+      dirty--;
       renderer.render(scene, camera);
     });
 
