@@ -144,6 +144,17 @@ const SEO =
   '<meta name="twitter:description" content="' + DESCRIPTION + '">\n' +
   '<meta name="twitter:image" content="' + SITE + 'og.jpg">\n';
 
+/* What a phone puts on the home screen. The tab icon is only the crowned
+   cursor, since the name is unreadable at sixteen pixels; the home screen
+   gets the whole logo. iOS reads the touch icon (and asks for it by name
+   even without the tag), Android reads the manifest. The manifest keeps the
+   browser around it - "browser", not "standalone" - so signing in with
+   Google goes on working the way it does in a tab. */
+const HOME_ICON =
+  '<link rel="apple-touch-icon" href="/apple-touch-icon.png">\n' +
+  '<link rel="manifest" href="/site.webmanifest">\n' +
+  '<meta name="apple-mobile-web-app-title" content="Cursor Clash">\n';
+
 const page =
   "<!doctype html>\n<html lang=\"en\">\n<head>\n" +
   "<meta charset=\"utf-8\">\n" +
@@ -151,6 +162,7 @@ const page =
   "<title>" + TAGLINE + "</title>\n" +
   SEO +
   iconTag.trim() + "\n" +
+  HOME_ICON +
   GA_TAG +
   "<style>" + SKELETON_CSS + ACCOUNT_CSS + "</style>\n" +
   preload + "\n" +

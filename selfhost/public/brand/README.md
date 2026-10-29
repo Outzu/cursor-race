@@ -5,7 +5,16 @@ Exports the game embeds, kept here with their sources so they can be re-cut.
 ## Ours
 
 - `logo-source.png` / `logo.webp` - the mascot mark on the home screen
-- `icon-source.png` / `favicon.png` - the tab icon
+- `app-icon-source.png` - the app icon, the whole logo. Cut from it:
+  - `favicon.png` - the tab icon: just the crowned cursor, cropped to
+    (300,20)-(1000,720) on the navy, rounded, 64px - the name is unreadable
+    at tab size
+  - `../apple-touch-icon.png` (180), `../icon-192.png`, `../icon-512.png` - the
+    home screen, the whole logo flattened onto its navy so the phone can round
+    the corners itself
+  - `../icon-maskable-512.png` - the same at 400px in the middle of 512, so
+    Android can cut it to a circle without losing the edges
+- `icon-source.png` - the old tab icon's source, kept for reference
 - `trophy-source.png` / `trophy.webp` - the button that opens the board on a phone
 - `board.webp` - the hoarding: our own board, built from shapes in three.js, the
   same construction as the desk's `board3d.js` (github.com/Outzu/cursorclash-billboard)
