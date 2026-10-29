@@ -4916,7 +4916,60 @@
       }
     }).observe({ type: "long-animation-frame", buffered: false });
   } catch (e) {}
+
+  /* ?fps=1 (or cr.fps=on in storage): a frame meter in the corner, for the
+     single dropped frame that is too short to count as a stall above. Each
+     drop is also written to the console with what was going on - how long
+     our own script took on the frame before it, which view, how many other
+     pilots, which speed sound, which screen - so a drop that only happens in
+     one browser, on one screen, or with one thing switched on can be pinned
+     down on the machine it happens on. Off, it costs one test a frame. */
+  const METER = (() => {
+    try { return /[?&]fps=1\b/.test(location.search) || localStorage.getItem("cr.fps") === "on"; } catch (e) { return false; }
+  })();
+  const FM = { el: null, gaps: new Float32Array(330), n: 0, i: 0, period: 0, drops: [], total: 0, worst: 0,
+    js: 0, jsSum: 0, jsN: 0, paintAt: 0, loggedAt: 0, quiet: 0 };
+  function meterFrame(now, gap, js) {
+    if (!FM.el) {
+      FM.el = document.createElement("div");
+      FM.el.style.cssText = "position:fixed;left:8px;top:8px;z-index:200;pointer-events:none;white-space:pre;" +
+        "font:11px/1.4 ui-monospace,monospace;color:#8ef7ea;background:rgba(4,10,32,.85);padding:5px 8px;border-radius:6px";
+      document.body.appendChild(FM.el);
+    }
+    const prevJs = FM.js;
+    FM.js = js; FM.jsSum += js; FM.jsN++;
+    if (gap > 0 && gap < 1000 && !document.hidden && now - gap > shownAt) {   // a tab coming back is not a drop
+      FM.gaps[FM.i] = gap; FM.i = (FM.i + 1) % FM.gaps.length; FM.n = Math.min(FM.n + 1, FM.gaps.length);
+      if (FM.period && gap > FM.period * 1.5) {
+        FM.drops.push(now); FM.total++; FM.worst = Math.max(FM.worst, gap);
+        if (now - FM.loggedAt > 1000) {
+          FM.loggedAt = now;
+          const view = document.body.classList.contains("focus") ? "racing view" : "home view";
+          const others = S.peers.filter(p => !p.sameTab).length;
+          console.info("[cursorclash] dropped frame: " + gap.toFixed(1) + " ms where " + FM.period.toFixed(1) + " was due" +
+            (FM.quiet ? " (+" + FM.quiet + " more in the last second)" : "") + " - our script " + prevJs.toFixed(1) +
+            " ms on the frame before; phase " + S.phase + ", " + view + ", " + others + " other pilot" + (others === 1 ? "" : "s") +
+            ", speed sound " + S.sound + ", screen " + screen.width + "x" + screen.height + " at " + (window.devicePixelRatio || 1) + "x");
+          FM.quiet = 0;
+        } else FM.quiet++;
+      }
+    }
+    if (now - FM.paintAt < 500) return;
+    FM.paintAt = now;
+    const g = Array.from(FM.gaps.subarray(0, FM.n)).sort((a, b) => a - b);
+    if (g.length < 20) return;
+    FM.period = g[Math.floor(g.length * 0.25)];               // the screen's own beat: the quicker frames, not the very quickest
+    while (FM.drops.length && now - FM.drops[0] > 10000) FM.drops.shift();
+    const med = g[g.length >> 1];
+    FM.el.textContent = Math.round(1000 / med) + " fps on a " + Math.round(1000 / FM.period) + " Hz screen\n" +
+      "frame " + med.toFixed(1) + " ms, worst " + FM.worst.toFixed(1) + " ms\n" +
+      "dropped " + FM.drops.length + " in 10 s, " + FM.total + " in all\n" +
+      "our script " + (FM.jsSum / FM.jsN).toFixed(2) + " ms a frame";
+    FM.jsSum = 0; FM.jsN = 0;
+  }
+
   function frame(now) {
+    const t0 = METER ? performance.now() : 0;
     const gap = lastFrameAt ? now - lastFrameAt : 0;
     if (gap > 330 && gap < 20000 && !document.hidden && lastFrameAt > shownAt)   // a tab coming back is not a stall
       console.warn("[cursorclash] stall: no frame for " + Math.round(gap) + " ms (" + stallWhere() + ")");
@@ -4931,6 +4984,7 @@
     if (document.body.classList.contains("focus")) clearFx();
     else drawFx(now);
     if (demoBg()) drawZoom(now); else clearZoom();
+    if (METER) meterFrame(now, gap, performance.now() - t0);
     requestAnimationFrame(frame);
   }
   /* Keeps the race ticking in a tab the browser has stopped drawing. While
