@@ -5736,12 +5736,13 @@
       a.type = "sawtooth"; b.type = "sawtooth"; a.frequency.value = 82; b.frequency.value = 84.5;
       lp.type = "lowpass"; lp.frequency.value = 700; g.gain.value = 0;
       a.connect(lp); b.connect(lp); lp.connect(g).connect(out);
-      return { srcs: [a, b], set(i, turn, at) {
+      return { srcs: [a, b], set(i, turn, at, calm) {
         const k = 1 + 0.4 * i + 0.15 * turn;
         a.frequency.setTargetAtTime(82 * k, at, 0.05);
         b.frequency.setTargetAtTime(84.5 * k, at, 0.05);
         lp.frequency.setTargetAtTime(700 + 1800 * i, at, 0.05);
-        g.gain.setTargetAtTime(0.035 + 0.3 * i, at, 0.04);   // a low hum even holding still
+        // a low hum even holding still, in a race; a menu left alone stays silent
+        g.gain.setTargetAtTime((calm ? 0 : 0.035) + 0.3 * i, at, 0.04);
       } };
     },
     laser(ctx, out) {                             // a warbling beam that climbs with the swing
@@ -5779,22 +5780,45 @@
     setTimeout(() => { try { v.out.disconnect(); } catch (e) {} }, 400);
   }
 
-  const SW = { voice: null, x: 0, y: 0, t: 0, vx: 0, vy: 0, v: 0, pk: 0, turn: 0, hx: 0, hy: 0, at: 0 };
+  /* The sound is the cursor's, not only the race's: in the menus it follows
+     the mouse itself. Measured in channel units - a screen's height is the
+     channel's - so a flick sounds the same in the lobby as it does racing.
+     A finger in the menus is scrolling, not steering, so only a mouse counts
+     there. On the pilot page a sound tapped but not yet bought is the one
+     you hear, the way a locked cursor is the one you wear while choosing. */
+  const PTR = { x: 0, y: 0, seen: false };
+  window.addEventListener("pointermove", e => {
+    if (e.pointerType !== "mouse") return;
+    PTR.x = e.clientX; PTR.y = e.clientY; PTR.seen = true;
+  }, { passive: true, capture: true });
+
+  const SW = { voice: null, mode: "", x: 0, y: 0, t: 0, vx: 0, vy: 0, v: 0, pk: 0, turn: 0, hx: 0, hy: 0, at: 0 };
   function steerSound(now) {
-    const want = S.phase === "racing" && S.joined && !S.death && S.sound !== "quiet" &&
-      !document.hidden && actx && actx.state === "running" && musicVol > 0;
-    if (!want || (SW.voice && SW.voice.id !== S.sound)) {
+    const racing = S.phase === "racing" && S.joined && !S.death;
+    // the gate's countdown and watching a race are neither: quiet there
+    const menu = !racing && (S.phase === "idle" || S.phase === "over") && PTR.seen && !swing;
+    const id = racing ? S.sound
+      : (previewing() && S.buying.kind === "sounds") ? S.buying.id : S.sound;
+    const mode = racing ? "race" : menu ? "menu" : "";
+    const want = mode && id !== "quiet" && !document.hidden && actx && actx.state === "running" && musicVol > 0;
+    if (!want || (SW.voice && SW.voice.id !== id)) {
       if (SW.voice) { dropVoice(SW.voice); SW.voice = null; }
       if (!want) { SW.t = 0; return; }
     }
-    if (!SW.voice) { SW.voice = makeVoice(S.sound); SW.t = 0; if (!SW.voice) return; }
+    if (!SW.voice) { SW.voice = makeVoice(id); SW.t = 0; if (!SW.voice) return; }
+    if (SW.mode !== mode) { SW.mode = mode; SW.t = 0; }   // the race and the menu measure in different places
+    const unit = H / Math.max(300, innerHeight);
+    const cx = racing ? S.cx : PTR.x * unit, cy = racing ? S.cy : PTR.y * unit;
     const dt = SW.t ? (now - SW.t) / 1000 : 0;
-    if (!(dt > 0 && dt < 0.1)) {                      // first frame, or after a pause: start from rest
-      SW.x = S.cx; SW.y = S.cy; SW.t = now; SW.vx = SW.vy = SW.v = SW.pk = SW.turn = 0; SW.at = 0;
+    // first frame, or after a real pause: start from rest. A slow machine's
+    // frames can be a tenth of a second apart and still be steering
+    if (!(dt > 0 && dt < 0.25)) {
+      SW.x = cx; SW.y = cy; SW.t = now; SW.vx = SW.vy = SW.v = SW.pk = SW.turn = 0; SW.at = 0;
+      SW.voice.set(0, 0, actx.currentTime, !racing);
       return;
     }
-    const vx = (S.cx - SW.x) / dt, vy = (S.cy - SW.y) / dt;
-    SW.x = S.cx; SW.y = S.cy; SW.t = now;
+    const vx = (cx - SW.x) / dt, vy = (cy - SW.y) / dt;
+    SW.x = cx; SW.y = cy; SW.t = now;
     const k = Math.min(1, dt / 0.06);                 // input arrives unevenly; smooth it over a few frames
     SW.vx += (vx - SW.vx) * k; SW.vy += (vy - SW.vy) * k;
     SW.v = Math.hypot(SW.vx, SW.vy);
@@ -5813,7 +5837,7 @@
     SW.turn = Math.max(turn, SW.turn * Math.exp(-dt / 0.14));
     const i = Math.max(0, Math.min(1, (SW.v - 220) / 1500));
     SW.voice.out.gain.setTargetAtTime(Math.min(1, musicVol * CUE_LEVEL), actx.currentTime, 0.1);
-    SW.voice.set(i, SW.turn, actx.currentTime);
+    SW.voice.set(i, SW.turn, actx.currentTime, !racing);
   }
 
   /* Tapping a sound in the shop plays it on a swing it makes up: across,
