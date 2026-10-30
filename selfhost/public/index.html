@@ -5631,10 +5631,25 @@
   let actx = null;
   function audioCtx() {
     if (!AC) return null;
-    if (!actx) { try { actx = new AC(); } catch (e) { actx = null; return null; } }
-    if (actx.state === "suspended") { try { actx.resume().catch(() => {}); } catch (e) {} }
+    if (!actx) {
+      /* On an iPhone, Web Audio is "ambient" by default: the ring/silent
+         switch silences it, unless an <audio> element happens to be playing.
+         The lobby music is one, so with the music on the game was audible
+         and with it off the game went quiet. The game's sounds are the
+         game's, whichever way the music button is, so they play like media */
+      try { if (navigator.audioSession) navigator.audioSession.type = "playback"; } catch (e) {}
+      try { actx = new AC(); } catch (e) { actx = null; return null; }
+    }
+    wakeAudio();
     return actx;
   }
+  /* A context can stop under us: Safari "interrupts" it when the page goes
+     to the background or a call comes in, and only a gesture may start it
+     again - so every gesture tries, not just the first one */
+  function wakeAudio() {
+    if (actx && actx.state !== "running" && actx.state !== "closed") { try { actx.resume().catch(() => {}); } catch (e) {} }
+  }
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) wakeAudio(); });
   const sfxBuf = Object.create(null);         // which -> AudioBuffer, or the promise of one
   const isBuf = b => !!b && typeof b.duration === "number";
   function decodeCue(which) {
@@ -5657,15 +5672,17 @@
     decodeCue("prepare"); decodeCue("go");
     if (wd) for (const t of tauntsFor(wd)) decodeCue(t.which);
   }
-  ["pointerdown", "keydown", "touchstart"].forEach(ev =>
+  ["pointerdown", "pointerup", "keydown", "touchstart", "touchend"].forEach(ev =>
     window.addEventListener(ev, () => { if (audioCtx()) { decodeCue("prepare"); decodeCue("go"); } },
-      { passive: true, once: true }));
+      { passive: true, capture: true }));
 
   let prepareSrc = null;
   function sfx(which, boost, start) {
-    const buf = actx && sfxBuf[which];
+    // a context that is not running would start the cue late or never: the element plays it now instead
+    const buf = actx && actx.state === "running" && sfxBuf[which];
+    if (actx && !buf) wakeAudio();
+    if (start && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }   // the countdown gives way to the start
     if (isBuf(buf)) {
-      if (start && prepareSrc) { try { prepareSrc.stop(); } catch (e) {} prepareSrc = null; }   // the countdown gives way to the start
       const src = actx.createBufferSource();
       src.buffer = buf;
       const g = actx.createGain();
